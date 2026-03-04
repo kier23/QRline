@@ -25,7 +25,6 @@ const Layout: React.FC<LayoutProps> = ({ children, showNavigation = true }) => {
             to="/"
             className="text-2xl font-bold text-indigo-600 flex items-center"
           >
-            <span className="mr-2">📋</span>
             QRline
           </Link>
 
