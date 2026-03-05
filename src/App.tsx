@@ -6,7 +6,7 @@ import CompleteProfile from "./pages/CompleteProfile";
 import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 import ManageQueue from "./pages/ManageQueue";
-import QueueQR from "./pages/QueueQrDisplay";
+import QueueQR from "./pages/QueueQRDisplay";
 import CreateTicket from "./pages/CreateTicket";
 
 function App() {
