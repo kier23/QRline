@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getGuestId } from "../lib/getGuestId";
 import Layout from "../components/Layout";
 
 const CreateTicket = () => {
@@ -35,13 +36,35 @@ const CreateTicket = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const guestId = getGuestId();
     if (!queueId || !nextNumber) return;
 
     setLoading(true);
 
+    // prevent duplicates: same queue + same guest with active status
+    const { data: existingTickets, error: checkError } = await supabase
+      .from("Queue_Tickets")
+      .select("id")
+      .eq("queue_id", queueId)
+      .eq("guest_id", guestId)
+      .in("status", ["waiting", "in_service"]);
+
+    if (checkError) {
+      alert("Error checking existing tickets. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    if (existingTickets && existingTickets.length > 0) {
+      alert("You already have an active ticket in this queue. Please finish or cancel that ticket before creating a new one.");
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.from("Queue_Tickets").insert([
       {
         queue_id: queueId,
+        guest_id: guestId,
         ticket_number: nextNumber,
         client_name: clientName,
         email: email,
@@ -53,7 +76,7 @@ const CreateTicket = () => {
 
     if (!error) {
       alert(`Ticket #${nextNumber} created!`);
-      navigate(-1);
+      navigate(`/queue/${queueId}/status`);
     } else {
       alert("Error creating ticket");
     }

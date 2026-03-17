@@ -25,7 +25,7 @@ const Layout: React.FC<LayoutProps> = ({ children, showNavigation = true }) => {
             to="/"
             className="text-2xl font-bold text-indigo-600 flex items-center"
           >
-            QRline
+            PayFlow - PalawanSU
           </Link>
 
           {showNavigation && (
@@ -57,7 +57,7 @@ const Layout: React.FC<LayoutProps> = ({ children, showNavigation = true }) => {
       {/* Footer */}
       <footer className="bg-white border-t mt-12 py-6">
         <div className="container mx-auto px-4 text-center text-gray-600">
-          <p>© {new Date().getFullYear()} QRline - Queue Management System</p>
+          <p>© {new Date().getFullYear()} PayFlow - Queue Management System</p>
         </div>
       </footer>
     </div>

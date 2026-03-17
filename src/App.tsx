@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import ManageQueue from "./pages/ManageQueue";
 import QueueQR from "./pages/QueueQRDisplay";
 import CreateTicket from "./pages/CreateTicket";
+import QueueStatus from "./pages/QueueStatus";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/admin/queue/:queueId" element={<ManageQueue />} />
           <Route path="/admin/queue/:queueId/qr" element={<QueueQR />} />
           <Route path="/queue/:queueId" element={<CreateTicket />} />
+          <Route path="/queue/:queueId/status" element={<QueueStatus />} />
         </Routes>
       </div>
     </BrowserRouter>
