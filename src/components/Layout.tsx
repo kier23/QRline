@@ -14,6 +14,7 @@ const Layout: React.FC<LayoutProps> = ({ children, showNavigation = true }) => {
     { path: "/", label: "Login" },
     { path: "/complete-profile", label: "Complete Profile" },
     { path: "/admin-dashboard", label: "Dashboard" },
+    { path: "/superadmin", label: "Superadmin" },
   ];
 
   return (

@@ -10,18 +10,34 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
   const navigate = useNavigate();
 
-  // Check if user is already logged in
   useEffect(() => {
+    let mounted = true;
+
     const checkSession = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (session) {
-        navigate("/admin-dashboard");
+
+      if (!mounted || !session?.user?.id) return;
+
+      const { data: profile } = await supabase
+        .from("Profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (profile?.role === "superadmin") {
+        navigate("/superadmin", { replace: true });
+      } else {
+        navigate("/admin-dashboard", { replace: true });
       }
     };
 
     checkSession();
+
+    return () => {
+      mounted = false;
+    };
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,9 +52,40 @@ const LoginPage: React.FC = () => {
     console.log("Login response:", data, error);
     if (error) {
       setError(error.message);
-    } else {
-      navigate("/admin-dashboard");
+      setLoading(false);
+      return;
     }
+
+    const userId = data?.user?.id;
+    if (!userId) {
+      setError("Unable to determine user after login");
+      setLoading(false);
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("Profiles")
+      .select("role")
+      .eq("id", userId)
+      .single();
+
+    if (profileError || !profile) {
+      setError(profileError?.message || "Profile not found");
+      setLoading(false);
+      return;
+    }
+
+    if (profile.role === "superadmin") {
+      navigate("/superadmin");
+    } else if (profile.role === "admin") {
+      navigate("/admin-dashboard");
+    } else {
+      setError("Access restricted: unauthorized role");
+      await supabase.auth.signOut();
+      setLoading(false);
+      return;
+    }
+
     setLoading(false);
     setUsername("");
     setPassword("");

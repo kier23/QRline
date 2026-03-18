@@ -2,20 +2,23 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Layout from "../components/Layout";
+import Speech from "speak-tts";
 
 type Queue = {
   id: string;
   status: string;
   date: string;
   managed_by: string;
-  latest_number: number;
+  latest_number: number | null;
 };
+
+type TicketStatus = "waiting" | "serving" | "done" | "skipped";
 
 type Ticket = {
   id: string;
   ticket_number: number;
   client_name: string;
-  status: string;
+  status: TicketStatus;
 };
 
 const ManageQueue = () => {
@@ -29,10 +32,32 @@ const ManageQueue = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔊 Sound
-  const playSound = () => {
-    const audio = new Audio("/notification.mp3"); // put file in public folder
-    audio.play();
+  const speech = new Speech();
+
+  const speakNumber = async (number: number) => {
+    const text = `Now serving number ${number}`;
+
+    try {
+      if (!speech.hasBrowserSupport()) {
+        console.error("Browser does not support speech synthesis");
+        return;
+      }
+
+      await speech.init({
+        voice: "Microsoft Zira - English (United States)",
+        volume: 1,
+        lang: "en-US",
+        rate: 1,
+        pitch: 1,
+        splitSentences: true,
+      });
+      speech.speak({
+        text,
+        queue: false,
+      });
+    } catch (err) {
+      console.error("TTS error:", err);
+    }
   };
 
   useEffect(() => {
@@ -111,7 +136,7 @@ const ManageQueue = () => {
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "Queue",
           filter: `id=eq.${queueId}`,
@@ -138,7 +163,15 @@ const ManageQueue = () => {
     const ticketList = data || [];
     setTickets(ticketList);
 
-    const serving = ticketList.find((t) => t.status === "serving");
+    const { data: freshQueue } = await supabase
+      .from("Queue")
+      .select("latest_number")
+      .eq("id", queueId)
+      .single();
+
+    const serving = ticketList.find(
+      (t) => t.ticket_number === freshQueue?.latest_number,
+    );
     setCurrentServing(serving || null);
   };
 
@@ -146,70 +179,126 @@ const ManageQueue = () => {
     if (!queue || processing) return;
     setProcessing(true);
 
-    const nextNumber = (queue.latest_number || 0) + 1;
+    try {
+      // 1. Finish current
+      if (currentServing) {
+        await supabase
+          .from("Queue_Tickets")
+          .update({ status: "done" })
+          .eq("id", currentServing.id);
+      }
 
-    // find ticket with next number
-    const nextTicket = tickets.find((t) => t.ticket_number === nextNumber);
-
-    if (!nextTicket) {
-      setProcessing(false);
-      return;
-    }
-
-    // mark current serving as done
-    if (currentServing) {
-      await supabase
+      // 2. Get next waiting ticket
+      const { data: nextTicket, error } = await supabase
         .from("Queue_Tickets")
-        .update({ status: "done" })
-        .eq("id", currentServing.id);
-    }
+        .select("*")
+        .eq("queue_id", queue.id)
+        .eq("status", "waiting")
+        .order("ticket_number", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-    // mark next ticket as serving
-    await supabase
-      .from("Queue_Tickets")
-      .update({ status: "serving" })
-      .eq("id", nextTicket.id);
+      if (error) {
+        console.error("Fetch next ticket error:", error);
+        return;
+      }
 
-    // increment latest_number
-    await supabase
-      .from("Queue")
-      .update({ latest_number: nextNumber })
-      .eq("id", queue.id);
+      // ❗ If no next ticket → STOP (DON’T SET NULL)
+      if (!nextTicket) {
+        console.log("No more tickets");
+        setCurrentServing(null);
+        return;
+      }
 
-    playSound();
-    setProcessing(false);
-  };
-
-  const skipCurrent = async () => {
-    if (!queue || !currentServing) return;
-
-    const nextNumber = (queue.latest_number || 0) + 1;
-
-    // mark current as skipped
-    await supabase
-      .from("Queue_Tickets")
-      .update({ status: "skipped" })
-      .eq("id", currentServing.id);
-
-    const nextTicket = tickets.find((t) => t.ticket_number === nextNumber);
-
-    if (nextTicket) {
+      // 3. Mark next ticket as serving
       await supabase
         .from("Queue_Tickets")
         .update({ status: "serving" })
         .eq("id", nextTicket.id);
 
-      await supabase
+      // 4. Update queue latest_number (THIS IS THE KEY FIX)
+      const { data: updatedQueue, error: updateError } = await supabase
         .from("Queue")
-        .update({ latest_number: nextNumber })
-        .eq("id", queue.id);
+        .update({
+          latest_number: nextTicket.ticket_number, // ✅ ALWAYS NUMBER
+        })
+        .eq("id", queue.id)
+        .select()
+        .single();
 
-      playSound();
-    } else {
+      if (updateError) {
+        console.error("Queue update failed:", updateError);
+        return;
+      }
+
+      // 5. Update UI
+      setQueue(updatedQueue);
+      setCurrentServing(nextTicket);
+      speakNumber(nextTicket.ticket_number);
+
+      // 6. Refresh tickets
+      await fetchTickets();
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const skipCurrent = async () => {
+    if (!queue || !currentServing || processing) return;
+    setProcessing(true);
+
+    try {
       await supabase
+        .from("Queue_Tickets")
+        .update({ status: "skipped" })
+        .eq("id", currentServing.id);
+
+      const { data: nextTicket } = await supabase
+        .from("Queue_Tickets")
+        .select("*")
+        .eq("queue_id", queue.id)
+        .eq("status", "waiting")
+        .gt("ticket_number", currentServing.ticket_number)
+        .order("ticket_number", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (!nextTicket) {
+        await supabase
+          .from("Queue")
+          .update({ latest_number: null })
+          .eq("id", queue.id);
+
+        setQueue((prev) => (prev ? { ...prev, latest_number: null } : prev));
+        setCurrentServing(null);
+      } else {
+        await supabase
+          .from("Queue_Tickets")
+          .update({ status: "serving" })
+          .eq("id", nextTicket.id);
+
+        await supabase
+          .from("Queue")
+          .update({ latest_number: nextTicket.ticket_number })
+          .eq("id", queue.id);
+
+        setQueue((prev) =>
+          prev ? { ...prev, latest_number: nextTicket.ticket_number } : prev,
+        );
+        setCurrentServing(nextTicket);
+      }
+
+      await fetchTickets();
+      const { data: updatedQueue } = await supabase
         .from("Queue")
-        .update({ latest_number: null })
-        .eq("id", queue.id);
+        .select("*")
+        .eq("id", queue.id)
+        .single();
+      if (updatedQueue) setQueue(updatedQueue);
+
+      // playSound(); // disabled for testing number update only
+    } finally {
+      setProcessing(false);
     }
   };
   const waitingCount = tickets.filter((t) => t.status === "waiting").length;
@@ -226,7 +315,7 @@ const ManageQueue = () => {
               {/* HEADER */}
               <div className="bg-white rounded-3xl shadow p-6 flex justify-between items-center">
                 <div>
-                  <h2 className="text-2xl font-bold">🎛️ Queue Control Panel</h2>
+                  <h2 className="text-2xl font-bold">Queue Control Panel</h2>
                   <p className="text-gray-500">Queue ID: {queue.id}</p>
                 </div>
 
@@ -272,7 +361,11 @@ const ManageQueue = () => {
               {/* CONTROL BUTTONS */}
               <div className="bg-white rounded-3xl p-6 shadow flex gap-4 justify-center">
                 <button
-                  onClick={callNext}
+                  onClick={() => {
+                    window.speechSynthesis.cancel(); // reset
+                    window.speechSynthesis.resume(); // unlock audio
+                    callNext();
+                  }}
                   className="px-8 py-4 bg-indigo-600 text-white rounded-2xl text-lg font-semibold shadow hover:bg-indigo-700"
                 >
                   ▶ Next
@@ -286,10 +379,14 @@ const ManageQueue = () => {
                 </button>
 
                 <button
-                  onClick={playSound}
+                  onClick={() => {
+                    if (queue?.latest_number !== null) {
+                      speakNumber(queue.latest_number);
+                    }
+                  }}
                   className="px-8 py-4 bg-yellow-500 text-white rounded-2xl text-lg font-semibold shadow hover:bg-yellow-600"
                 >
-                  🔊 Play Sound
+                  Play Sound
                 </button>
                 <button
                   onClick={() =>
@@ -307,20 +404,45 @@ const ManageQueue = () => {
 
               {/* WAITING LIST */}
               <div className="bg-white rounded-3xl shadow p-6">
-                <h3 className="text-xl font-semibold mb-4">Waiting List</h3>
+                <h3 className="text-xl font-semibold mb-4">Ticket List</h3>
 
                 <div className="space-y-2">
                   {tickets
-                    .filter((t) => t.status === "waiting")
-                    .map((ticket) => (
-                      <div
-                        key={ticket.id}
-                        className="flex justify-between bg-gray-100 rounded-xl p-3"
-                      >
-                        <span>#{ticket.ticket_number}</span>
-                        <span>{ticket.client_name}</span>
-                      </div>
-                    ))}
+                    .slice()
+                    .sort((a, b) => {
+                      const order: Record<TicketStatus, number> = {
+                        waiting: 0,
+                        serving: 1,
+                        done: 2,
+                        skipped: 3,
+                      };
+                      return order[a.status] - order[b.status];
+                    })
+                    .map((ticket) => {
+                      const statusClasses = {
+                        waiting: "bg-yellow-100 text-yellow-800",
+                        serving: "bg-blue-100 text-blue-800",
+                        done: "bg-green-100 text-green-800",
+                        skipped: "bg-red-100 text-red-800",
+                      };
+
+                      return (
+                        <div
+                          key={ticket.id}
+                          className={`flex justify-between rounded-xl p-3 ${statusClasses[ticket.status as keyof typeof statusClasses] ?? "bg-gray-100 text-gray-800"}`}
+                        >
+                          <div>
+                            <span className="font-semibold">
+                              #{ticket.ticket_number}
+                            </span>{" "}
+                            {ticket.client_name}
+                          </div>
+                          <span className="font-medium uppercase text-sm">
+                            {ticket.status}
+                          </span>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             </>

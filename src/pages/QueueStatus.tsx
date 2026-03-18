@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getGuestId } from "../lib/getGuestId";
@@ -26,6 +26,26 @@ const QueueStatus = () => {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
   const [userTicket, setUserTicket] = useState<QueueTicket | null>(null);
+
+  const [notifications, setNotifications] = useState<string[]>([]);
+
+  const prevNextNumberRef = useRef<number | null>(null);
+  const prevUserStatusRef = useRef<string | null>(null);
+  const prevTicketNumberRef = useRef<number | null>(null);
+
+  const addNotification = (message: string) => {
+    setNotifications((prev) => [message, ...prev].slice(0, 6));
+
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(message);
+    }
+  };
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   const fetchStatus = async () => {
     if (!queueId) return;
@@ -85,6 +105,38 @@ const QueueStatus = () => {
   useEffect(() => {
     fetchStatus();
   }, [queueId]);
+
+  useEffect(() => {
+    if (!queueId) return;
+
+    const previousNext = prevNextNumberRef.current;
+    const previousStatus = prevUserStatusRef.current;
+    const previousTicketNumber = prevTicketNumberRef.current;
+
+    if (userTicket && nextNumber !== null) {
+      if (
+        userTicket.status === "waiting" &&
+        userTicket.ticket_number === nextNumber &&
+        (previousNext === null || previousNext !== nextNumber)
+      ) {
+        addNotification(
+          `Get ready! You're next (#${userTicket.ticket_number}).`,
+        );
+      }
+
+      if (
+        userTicket.status === "serving" &&
+        (previousStatus !== "serving" ||
+          previousTicketNumber !== userTicket.ticket_number)
+      ) {
+        addNotification(`It's your turn: ticket #${userTicket.ticket_number}.`);
+      }
+    }
+
+    prevNextNumberRef.current = nextNumber;
+    prevUserStatusRef.current = userTicket?.status || null;
+    prevTicketNumberRef.current = userTicket?.ticket_number || null;
+  }, [queueId, nextNumber, userTicket]);
 
   useEffect(() => {
     if (!queueId) return;
@@ -185,6 +237,30 @@ const QueueStatus = () => {
                   <p className="mt-2 text-gray-600">{userStatusText()}</p>
                 </div>
               </div>
+
+              {!!notifications.length && (
+                <div className="rounded-lg border p-4 bg-gray-50 text-sm text-gray-800">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-semibold">Notifications</span>
+                    <button
+                      className="text-indigo-600 hover:underline"
+                      onClick={() => setNotifications([])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <ul className="space-y-1">
+                    {notifications.map((msg, idx) => (
+                      <li
+                        key={`${idx}-${msg}`}
+                        className="rounded px-2 py-1 bg-white border"
+                      >
+                        {msg}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {!userTicket && (
                 <div className="text-center">

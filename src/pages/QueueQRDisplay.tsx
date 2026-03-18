@@ -27,7 +27,11 @@ const QueueQRDisplay = () => {
   // 🔊 Play sound when number changes
   const playSound = () => {
     const audio = new Audio("/notification.mp3");
-    audio.play();
+    audio.play().catch((err) => {
+      console.warn("Audio playback failed", err);
+      try {
+      } catch (audioError) {}
+    });
   };
 
   // Fetch queue info (including latest_number)
@@ -100,7 +104,9 @@ const QueueQRDisplay = () => {
           table: "Queue_Tickets",
           filter: `queue_id=eq.${queueId}`,
         },
-        async () => {
+
+        async (payload) => {
+          console.log("Ticket change detected:", payload);
           const { data } = await supabase
             .from("Queue_Tickets")
             .select("*")
@@ -110,7 +116,9 @@ const QueueQRDisplay = () => {
           updateNextNumber(data || []);
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("TEST STATUS:", status);
+      });
 
     isFirstLoad.current = false;
 

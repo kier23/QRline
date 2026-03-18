@@ -9,7 +9,6 @@ const CreateTicket = () => {
   const navigate = useNavigate();
   const [clientName, setClientName] = useState("");
   const [email, setEmail] = useState("");
-  const [isStudent, setIsStudent] = useState(false);
   const [payment, setPayment] = useState<"cashier" | "assessment">("cashier");
   const [loading, setLoading] = useState(false);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
@@ -56,7 +55,9 @@ const CreateTicket = () => {
     }
 
     if (existingTickets && existingTickets.length > 0) {
-      alert("You already have an active ticket in this queue. Please finish or cancel that ticket before creating a new one.");
+      alert(
+        "You already have an active ticket in this queue. Please finish or cancel that ticket before creating a new one.",
+      );
       setLoading(false);
       return;
     }
@@ -68,7 +69,6 @@ const CreateTicket = () => {
         ticket_number: nextNumber,
         client_name: clientName,
         email: email,
-        is_student: isStudent,
         payment: payment,
         status: "waiting",
       },
@@ -123,16 +123,6 @@ const CreateTicket = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full p-3 border rounded-xl"
               />
-            </div>
-
-            {/* Student Checkbox */}
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={isStudent}
-                onChange={(e) => setIsStudent(e.target.checked)}
-              />
-              <label>Is Student?</label>
             </div>
 
             {/* Payment Type */}

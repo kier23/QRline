@@ -12,7 +12,8 @@
     "@supabase/supabase-js": "^2.97.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.13.0"
+    "react-router-dom": "^7.13.0",
+    "speak-tts": "^2.0.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
