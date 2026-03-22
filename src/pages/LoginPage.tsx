@@ -2,6 +2,8 @@ import React, { useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faLock } from "@fortawesome/free-solid-svg-icons";
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = React.useState("");
@@ -92,20 +94,22 @@ const LoginPage: React.FC = () => {
   };
   return (
     <Layout showNavigation={false}>
-      <div className="flex items-center justify-center min-h-[70vh]">
-        <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-xl border border-gray-100">
+      <div className="flex items-center justify-center min-h-[80vh]">
+        <div className="w-full max-w-md p-10 space-y-8 bg-linear-to-br from-white via-orange-50/30 to-white rounded-3xl shadow-2xl border border-primary/20">
           <div className="text-center">
-            <div className="mx-auto h-16 w-16 rounded-full bg-indigo-100 flex items-center justify-center">
-              <span className="text-2xl">🔐</span>
+            <div className="mx-auto h-20 w-20 rounded-2xl bg-linear-to-br from-primary to-orange-700 flex items-center justify-center shadow-xl transform hover:rotate-6 transition-transform">
+              <FontAwesomeIcon icon={faLock} className="text-3xl text-white" />
             </div>
-            <h2 className="mt-4 text-3xl font-bold text-gray-900">
+            <h2 className="mt-6 text-3xl font-extrabold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
               Welcome Back
             </h2>
-            <p className="mt-2 text-gray-600">Sign in to your account</p>
+            <p className="mt-3 text-gray-600 font-medium">
+              Sign in to your account
+            </p>
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-50 p-4">
+            <div className="rounded-2xl bg-red-50 p-4 border border-red-200 shadow-md">
               <div className="flex">
                 <div className="shrink-0">
                   <svg
@@ -121,7 +125,9 @@ const LoginPage: React.FC = () => {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                  <h3 className="text-sm font-semibold text-red-800">
+                    {error}
+                  </h3>
                 </div>
               </div>
             </div>
@@ -131,7 +137,7 @@ const LoginPage: React.FC = () => {
             <div>
               <label
                 htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-1"
+                className="block text-sm font-semibold text-gray-700 mb-2"
               >
                 Email Address
               </label>
@@ -140,7 +146,7 @@ const LoginPage: React.FC = () => {
                 id="email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                className="w-full px-4 py-3.5 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary transition-all font-medium"
                 placeholder="Enter your email address"
                 required
               />
@@ -148,7 +154,7 @@ const LoginPage: React.FC = () => {
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-1"
+                className="block text-sm font-semibold text-gray-700 mb-2"
               >
                 Password
               </label>
@@ -157,7 +163,7 @@ const LoginPage: React.FC = () => {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                className="w-full px-4 py-3.5 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary transition-all font-medium"
                 placeholder="Enter your password"
                 required
               />
@@ -165,7 +171,7 @@ const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full px-4 py-3 text-base font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-4 text-base font-bold text-white bg-linear-to-r from-primary via-orange-600 to-primary rounded-xl hover:from-orange-700 hover:via-orange-700 hover:to-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
             >
               {loading ? (
                 <span className="flex items-center justify-center">

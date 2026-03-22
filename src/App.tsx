@@ -11,6 +11,7 @@ import ManageQueue from "./pages/ManageQueue";
 import QueueQR from "./pages/QueueQRDisplay";
 import CreateTicket from "./pages/CreateTicket";
 import QueueStatus from "./pages/QueueStatus";
+import EndUserPage from "./pages/EndUserPage";
 
 function App() {
   return (
@@ -18,7 +19,7 @@ function App() {
       <div className="App">
         <Routes>
           {/* 🔓 PUBLIC (END USER UI) */}
-          <Route path="/" element={<div>End User UI (Coming Soon)</div>} />
+          <Route path="/" element={<EndUserPage />} />
           <Route path="/queue/:queueId" element={<CreateTicket />} />
           <Route path="/queue/:queueId/status" element={<QueueStatus />} />
 

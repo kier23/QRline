@@ -2,11 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Layout from "../components/Layout";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faMobileAlt,
+  faBullseye,
+  faForward,
+} from "@fortawesome/free-solid-svg-icons";
 
 type Queue = {
   id: string;
   qr: string;
   latest_number: number | null;
+  cutoff_number: number | null;
 };
 
 type Ticket = {
@@ -21,6 +28,7 @@ const QueueQRDisplay = () => {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [currentServing, setCurrentServing] = useState<number | null>(null);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
+  const [cutoffNumber, setCutoffNumber] = useState<number | null>(null);
 
   const isFirstLoad = useRef(true);
 
@@ -41,13 +49,14 @@ const QueueQRDisplay = () => {
     const fetchQueue = async () => {
       const { data } = await supabase
         .from("Queue")
-        .select("id, qr, latest_number")
+        .select("id, qr, latest_number, cutoff_number")
         .eq("id", queueId)
         .single();
 
       if (data) {
         setQueue(data);
         setCurrentServing(data.latest_number ?? null);
+        setCutoffNumber(data.cutoff_number ?? null);
       }
     };
 
@@ -76,7 +85,7 @@ const QueueQRDisplay = () => {
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "Queue",
           filter: `id=eq.${queueId}`,
@@ -85,6 +94,7 @@ const QueueQRDisplay = () => {
           const updated = payload.new as Queue;
 
           setCurrentServing(updated.latest_number ?? null);
+          setCutoffNumber(updated.cutoff_number ?? null);
 
           if (!isFirstLoad.current) {
             playSound();
@@ -135,35 +145,81 @@ const QueueQRDisplay = () => {
 
   return (
     <Layout showNavigation={false}>
-      <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-linear-to-br from-background via-orange-50/30 to-background flex flex-col items-center justify-center p-6">
         {queue && (
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl p-10">
-            {/* QR */}
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl p-8 md:p-12 border border-primary/20">
+            {/* QR Code Section */}
             <div className="text-center mb-10">
-              <img
-                src={queue.qr}
-                alt="Queue QR"
-                className="w-72 h-72 mx-auto"
-              />
+              <div className="inline-block p-6 bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-3xl border-2 border-primary/20 shadow-xl mb-6">
+                <img
+                  src={queue.qr}
+                  alt="Queue QR"
+                  className="w-64 h-64 md:w-72 md:h-72 mx-auto rounded-2xl shadow-lg"
+                />
+              </div>
+              <p className="text-lg text-gray-600 font-semibold">
+                <FontAwesomeIcon icon={faMobileAlt} className="mr-2" /> Scan
+                this QR code to join the queue
+              </p>
             </div>
 
             {/* Display Section */}
-            <div className="grid grid-cols-2 gap-6 bg-indigo-600 text-white rounded-3xl p-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-linear-to-br from-primary via-orange-600 to-primary text-white rounded-3xl p-8 md:p-12 shadow-2xl border border-primary/30">
               {/* NOW SERVING */}
-              <div className="text-center border-r border-indigo-400">
-                <p className="text-xl opacity-80">NOW SERVING</p>
-                <h1 className="text-7xl font-bold mt-4">
-                  {currentServing ?? "--"}
-                </h1>
+              <div className="text-center border-r-0 md:border-r border-primary/40">
+                <p className="text-lg md:text-xl opacity-90 font-semibold tracking-wide mb-3">
+                  NOW SERVING
+                </p>
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <FontAwesomeIcon icon={faBullseye} className="text-4xl" />
+                  <h1 className="text-7xl md:text-8xl font-extrabold drop-shadow-lg">
+                    {currentServing ?? "--"}
+                  </h1>
+                </div>
+                <p className="text-sm md:text-base opacity-80 mt-3 font-medium">
+                  Current ticket being served
+                </p>
               </div>
 
               {/* NEXT NUMBER */}
               <div className="text-center">
-                <p className="text-xl opacity-80">NEXT NUMBER</p>
-                <h1 className="text-7xl font-bold mt-4">
-                  {nextNumber ?? "--"}
-                </h1>
+                <p className="text-lg md:text-xl opacity-90 font-semibold tracking-wide mb-3">
+                  NEXT IN LINE
+                </p>
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <FontAwesomeIcon icon={faForward} className="text-4xl" />
+                  <h1 className="text-7xl md:text-8xl font-extrabold drop-shadow-lg">
+                    {nextNumber ?? "--"}
+                  </h1>
+                </div>
+                <p className="text-sm md:text-base opacity-80 mt-3 font-medium">
+                  Upcoming ticket number
+                </p>
               </div>
+            </div>
+
+            {/* Footer Info */}
+            <div className="mt-8 text-center">
+              <p className="text-sm text-gray-500">
+                Please wait for your number to be called
+              </p>
+              {cutoffNumber !== null && (
+                <div className="mt-4 p-4 bg-linear-to-r from-purple-100 to-indigo-100 border-2 border-purple-300 rounded-2xl inline-block">
+                  <p className="text-sm font-semibold text-purple-800 flex items-center gap-2">
+                    <span className="text-lg">✂</span> End-of-Day Cutoff at
+                    Ticket
+                    <span className="text-xl font-bold">#{cutoffNumber}</span>
+                  </p>
+                  {currentServing && (
+                    <p className="text-xs text-purple-700 mt-1">
+                      {cutoffNumber - currentServing} ticket
+                      {cutoffNumber - currentServing !== 1 ? "s" : ""} remaining
+                      • Remaining tickets will be served tomorrow or next
+                      working day
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

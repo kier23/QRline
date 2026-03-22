@@ -3,6 +3,16 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Layout from "../components/Layout";
 import Speech from "speak-tts";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faSlidersH,
+  faHourglassHalf,
+  faBullseye,
+  faChartBar,
+  faList,
+  faVolumeUp,
+  faMobileAlt,
+} from "@fortawesome/free-solid-svg-icons";
 
 type Queue = {
   id: string;
@@ -10,6 +20,7 @@ type Queue = {
   date: string;
   managed_by: string;
   latest_number: number | null;
+  cutoff_number: number | null;
 };
 
 type TicketStatus = "waiting" | "serving" | "done" | "skipped";
@@ -25,6 +36,11 @@ const ManageQueue = () => {
   const { queueId } = useParams();
   const navigate = useNavigate();
   const [processing, setProcessing] = useState(false);
+  const [autoAdvanceTimer, setAutoAdvanceTimer] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState<number>(5);
+  const [showCutoffModal, setShowCutoffModal] = useState(false);
+  const [cutoffIncrement, setCutoffIncrement] = useState<number | null>(null);
+  const [customCutoffValue, setCustomCutoffValue] = useState<string>("");
 
   const [queue, setQueue] = useState<Queue | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -175,6 +191,64 @@ const ManageQueue = () => {
     setCurrentServing(serving || null);
   };
 
+  const sendQueueNotifications = async (latestNumber: number) => {
+    if (!queueId) return;
+
+    // 1. Get waiting tickets
+    const { data: tickets } = await supabase
+      .from("Queue_Tickets")
+      .select("ticket_number, guest_id")
+      .eq("queue_id", queueId)
+      .eq("status", "waiting");
+
+    for (const ticket of tickets || []) {
+      // 2. Get user's FCM token
+      const { data: user } = await supabase
+        .from("users")
+        .select("fcm_token")
+        .eq("guest_id", ticket.guest_id)
+        .single();
+
+      if (!user?.fcm_token) continue;
+
+      const diff = ticket.ticket_number - latestNumber;
+
+      // 🔔 5 tickets away
+      if (diff === 5) {
+        await fetch(
+          "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              token: user.fcm_token,
+              message: `You're 5 numbers away! (#${ticket.ticket_number})`,
+            }),
+          },
+        );
+      }
+
+      // 🚨 it's your turn
+      if (diff === 1) {
+        await fetch(
+          "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              token: user.fcm_token,
+              message: `You're 1 number away! (#${ticket.ticket_number})`,
+            }),
+          },
+        );
+      }
+    }
+  };
+
   const callNext = async () => {
     if (!queue || processing) return;
     setProcessing(true);
@@ -237,11 +311,49 @@ const ManageQueue = () => {
       speakNumber(nextTicket.ticket_number);
 
       // 6. Refresh tickets
+      await sendQueueNotifications(nextTicket.ticket_number);
       await fetchTickets();
     } finally {
       setProcessing(false);
     }
   };
+
+  const startAutoAdvance = () => {
+    if (autoAdvanceTimer || processing) return;
+
+    setCountdown(5);
+    const timer = window.setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          // Timer reached 0, call next
+          window.clearInterval(timer);
+          setAutoAdvanceTimer(null);
+          callNext();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    setAutoAdvanceTimer(timer);
+  };
+
+  const cancelAutoAdvance = () => {
+    if (autoAdvanceTimer) {
+      window.clearInterval(autoAdvanceTimer);
+      setAutoAdvanceTimer(null);
+      setCountdown(5);
+    }
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimer) {
+        window.clearInterval(autoAdvanceTimer);
+      }
+    };
+  }, [autoAdvanceTimer]);
 
   const skipCurrent = async () => {
     if (!queue || !currentServing || processing) return;
@@ -303,110 +415,422 @@ const ManageQueue = () => {
   };
   const waitingCount = tickets.filter((t) => t.status === "waiting").length;
 
+  const handleCutoffClick = () => {
+    setShowCutoffModal(true);
+  };
+
+  const handleCutoffIncrementSelect = async (increment: number) => {
+    if (!queue) return;
+
+    const currentNumber = queue.latest_number || 0;
+    const newCutoffNumber = currentNumber + increment;
+
+    // Update queue with cutoff number
+    const { data: updatedQueue, error } = await supabase
+      .from("Queue")
+      .update({
+        cutoff_number: newCutoffNumber,
+      })
+      .eq("id", queue.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to update cutoff number:", error);
+      return;
+    }
+
+    setQueue(updatedQueue);
+    setCutoffIncrement(increment);
+    setShowCutoffModal(false);
+  };
+
+  const handleSetCustomCutoff = async (customNumber: number) => {
+    if (!queue) return;
+
+    // Update queue with custom cutoff number
+    const { data: updatedQueue, error } = await supabase
+      .from("Queue")
+      .update({
+        cutoff_number: customNumber,
+      })
+      .eq("id", queue.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to update cutoff number:", error);
+      return;
+    }
+
+    setQueue(updatedQueue);
+    setShowCutoffModal(false);
+  };
+
+  const handleRemoveCutoff = async () => {
+    if (!queue) return;
+
+    const { data: updatedQueue } = await supabase
+      .from("Queue")
+      .update({
+        cutoff_number: null,
+      })
+      .eq("id", queue.id)
+      .select()
+      .single();
+
+    if (updatedQueue) {
+      setQueue(updatedQueue);
+      setCutoffIncrement(null);
+    }
+  };
+
   return (
     <Layout showNavigation={false}>
-      <div className="min-h-screen bg-gray-100 py-8 px-4">
+      <div className="min-h-screen bg-linear-to-br from-background via-orange-50/30 to-background py-8 px-4">
         <div className="max-w-7xl mx-auto space-y-6">
-          {loading && <p>Loading...</p>}
-          {error && <p className="text-red-600">{error}</p>}
+          {loading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl">
+              {error}
+            </div>
+          )}
 
           {queue && (
             <>
               {/* HEADER */}
-              <div className="bg-white rounded-3xl shadow p-6 flex justify-between items-center">
-                <div>
-                  <h2 className="text-2xl font-bold">Queue Control Panel</h2>
-                  <p className="text-gray-500">Queue ID: {queue.id}</p>
+              <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8 flex flex-col md:flex-row justify-between items-center gap-4 border border-primary/20">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-primary to-orange-700 flex items-center justify-center shadow-lg">
+                    <FontAwesomeIcon
+                      icon={faSlidersH}
+                      className="text-2xl text-white"
+                    />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl md:text-3xl font-bold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
+                      Queue Control Panel
+                    </h2>
+                    <p className="text-gray-500 text-sm mt-1">
+                      Queue ID:{" "}
+                      <span className="font-mono font-semibold">
+                        {queue.id}
+                      </span>
+                    </p>
+                  </div>
                 </div>
 
                 <button
                   onClick={() => navigate(-1)}
-                  className="px-4 py-2 bg-gray-200 rounded-lg"
+                  className="px-6 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl transition font-semibold text-gray-700 shadow-md hover:shadow-lg"
                 >
-                  Back
+                  ← Back
                 </button>
               </div>
 
               {/* CURRENT NUMBER DISPLAY */}
-              <div className="bg-indigo-600 text-white rounded-3xl shadow p-10 text-center">
-                <p className="text-lg opacity-80">Now Serving</p>
-                <h1 className="text-6xl font-bold mt-2">
+              <div className="bg-linear-to-br from-primary via-orange-600 to-primary text-white rounded-3xl shadow-2xl p-10 md:p-14 text-center border border-primary/30">
+                <p className="text-lg md:text-xl opacity-90 font-semibold tracking-wide">
+                  NOW SERVING
+                </p>
+                <h1 className="text-7xl md:text-9xl font-extrabold mt-4 drop-shadow-lg">
                   {queue?.latest_number ?? "--"}
                 </h1>
-                <p className="mt-2">
-                  {currentServing?.client_name || "Waiting..."}
+                <p className="mt-4 text-lg md:text-xl opacity-90 font-medium">
+                  {currentServing?.client_name || "Waiting for next ticket..."}
                 </p>
               </div>
 
               {/* STATS */}
               <div className="grid md:grid-cols-3 gap-6">
-                <div className="bg-white rounded-2xl p-6 shadow">
-                  <p className="text-gray-500">Waiting</p>
-                  <h3 className="text-3xl font-bold">{waitingCount}</h3>
-                </div>
-
-                <div className="bg-white rounded-2xl p-6 shadow">
-                  <p className="text-gray-500">Currently Serving</p>
-                  <h3 className="text-3xl font-bold">
-                    {currentServing ? currentServing.ticket_number : "-"}
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-primary/20 hover:shadow-xl transition-all">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center">
+                      <FontAwesomeIcon
+                        icon={faHourglassHalf}
+                        className="text-2xl text-yellow-600"
+                      />
+                    </div>
+                    <p className="text-gray-500 font-semibold">Waiting</p>
+                  </div>
+                  <h3 className="text-4xl font-extrabold text-primary">
+                    {waitingCount}
                   </h3>
                 </div>
 
-                <div className="bg-white rounded-2xl p-6 shadow">
-                  <p className="text-gray-500">Total Tickets</p>
-                  <h3 className="text-3xl font-bold">{tickets.length}</h3>
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-primary/20 hover:shadow-xl transition-all">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+                      <FontAwesomeIcon
+                        icon={faBullseye}
+                        className="text-2xl text-green-600"
+                      />
+                    </div>
+                    <p className="text-gray-500 font-semibold">
+                      Currently Serving
+                    </p>
+                  </div>
+                  <h3 className="text-4xl font-extrabold text-primary">
+                    {currentServing ? `#${currentServing.ticket_number}` : "-"}
+                  </h3>
+                </div>
+
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-primary/20 hover:shadow-xl transition-all">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                      <FontAwesomeIcon
+                        icon={faChartBar}
+                        className="text-2xl text-blue-600"
+                      />
+                    </div>
+                    <p className="text-gray-500 font-semibold">Total Tickets</p>
+                  </div>
+                  <h3 className="text-4xl font-extrabold text-primary">
+                    {tickets.length}
+                  </h3>
                 </div>
               </div>
 
               {/* CONTROL BUTTONS */}
-              <div className="bg-white rounded-3xl p-6 shadow flex gap-4 justify-center">
-                <button
-                  onClick={() => {
-                    window.speechSynthesis.cancel(); // reset
-                    window.speechSynthesis.resume(); // unlock audio
-                    callNext();
-                  }}
-                  className="px-8 py-4 bg-indigo-600 text-white rounded-2xl text-lg font-semibold shadow hover:bg-indigo-700"
-                >
-                  ▶ Next
-                </button>
+              <div className="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-primary/20">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <button
+                    onClick={() => {
+                      window.speechSynthesis.cancel(); // reset
+                      window.speechSynthesis.resume(); // unlock audio
+                      callNext();
+                    }}
+                    className="px-6 py-5 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-2xl text-base md:text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    ▶ Next
+                  </button>
 
-                <button
-                  onClick={skipCurrent}
-                  className="px-8 py-4 bg-red-500 text-white rounded-2xl text-lg font-semibold shadow hover:bg-red-600"
-                >
-                  ⏭ Skip
-                </button>
+                  <button
+                    onClick={skipCurrent}
+                    className="px-6 py-5 bg-linear-to-r from-red-500 to-red-600 text-white rounded-2xl text-base md:text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    ⏭ Skip
+                  </button>
 
-                <button
-                  onClick={() => {
-                    if (queue?.latest_number !== null) {
-                      speakNumber(queue.latest_number);
+                  <button
+                    onClick={() => {
+                      if (queue?.latest_number !== null) {
+                        speakNumber(queue.latest_number);
+                      }
+                    }}
+                    className="px-6 py-5 bg-linear-to-r from-gray-600 to-gray-700 text-white rounded-2xl text-base md:text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    <FontAwesomeIcon icon={faVolumeUp} className="mr-2" />{" "}
+                    Announce
+                  </button>
+                  <button
+                    onClick={() =>
+                      window.open(
+                        `/admin/queue/${queue.id}/qr`,
+                        "qrWindow",
+                        "width=1200,height=800,left=200,top=100,resizable=yes,scrollbars=yes",
+                      )
                     }
-                  }}
-                  className="px-8 py-4 bg-yellow-500 text-white rounded-2xl text-lg font-semibold shadow hover:bg-yellow-600"
-                >
-                  Play Sound
-                </button>
-                <button
-                  onClick={() =>
-                    window.open(
-                      `/admin/queue/${queue.id}/qr`,
-                      "qrWindow",
-                      "width=1200,height=800,left=200,top=100,resizable=yes,scrollbars=yes",
-                    )
-                  }
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
-                >
-                  Show QR
-                </button>
+                    className="px-6 py-5 bg-linear-to-r from-primary to-orange-700 text-white rounded-2xl text-base md:text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    <FontAwesomeIcon icon={faMobileAlt} className="mr-2" /> Show
+                    QR
+                  </button>
+                  <button
+                    onClick={handleCutoffClick}
+                    className="px-6 py-5 bg-linear-to-r from-purple-600 to-indigo-700 text-white rounded-2xl text-base md:text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    ✂ Cutoff
+                  </button>
+                </div>
+
+                {/* Auto-Advance Timer Control */}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-600 mb-2">
+                        Auto-Advance Timer
+                      </p>
+                      {autoAdvanceTimer ? (
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-linear-to-r from-orange-500 to-red-500 transition-all duration-1000 ease-linear"
+                              style={{ width: `${(countdown / 5) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-2xl font-bold text-orange-600 w-12 text-center">
+                            {countdown}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          Start timer to auto-advance queue after 5 seconds
+                        </p>
+                      )}
+                    </div>
+                    {autoAdvanceTimer ? (
+                      <button
+                        onClick={cancelAutoAdvance}
+                        className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all whitespace-nowrap"
+                      >
+                        ✖ Cancel
+                      </button>
+                    ) : (
+                      <button
+                        onClick={startAutoAdvance}
+                        disabled={processing || !currentServing}
+                        className={`px-6 py-3 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all whitespace-nowrap ${
+                          processing || !currentServing
+                            ? "bg-gray-300 cursor-not-allowed text-gray-500"
+                            : "bg-linear-to-r from-green-500 to-emerald-600 text-white hover:scale-105"
+                        }`}
+                      >
+                        ⏱ Start 5s Timer
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cutoff Status Display */}
+                {queue?.cutoff_number !== null &&
+                  queue?.cutoff_number !== undefined && (
+                    <div className="mt-6 pt-6 border-t border-purple-200">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-purple-700 mb-2 flex items-center gap-2">
+                            <span className="text-lg">✂</span> End-of-Day Cutoff
+                            Active
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Serving until ticket{" "}
+                            <span className="font-bold text-purple-800">
+                              #{queue.cutoff_number}
+                            </span>
+                          </p>
+                          {queue.latest_number && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {queue.cutoff_number - queue.latest_number} ticket
+                              {queue.cutoff_number - queue.latest_number !== 1
+                                ? "s"
+                                : ""}{" "}
+                              remaining • Remaining tickets continue tomorrow
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={handleRemoveCutoff}
+                          className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
               </div>
 
-              {/* WAITING LIST */}
-              <div className="bg-white rounded-3xl shadow p-6">
-                <h3 className="text-xl font-semibold mb-4">Ticket List</h3>
+              {/* Cutoff Modal */}
+              {showCutoffModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-2 border-purple-200">
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center">
+                      Set End-of-Day Cutoff
+                    </h3>
+                    <p className="text-gray-600 text-center mb-4">
+                      Current ticket:{" "}
+                      <span className="font-bold text-primary">
+                        #{queue?.latest_number || 0}
+                      </span>
+                    </p>
+                    <p className="text-sm text-purple-700 bg-purple-50 p-3 rounded-xl mb-6 text-center">
+                      💡 Remaining tickets after cutoff will continue tomorrow
+                      or next working day
+                    </p>
 
-                <div className="space-y-2">
+                    <div className="space-y-3 mb-6">
+                      <p className="text-sm font-semibold text-gray-700 mb-2">
+                        Quick Select:
+                      </p>
+                      {[1, 2, 3, 4].map((increment) => (
+                        <button
+                          key={increment}
+                          onClick={() => handleCutoffIncrementSelect(increment)}
+                          className="w-full px-6 py-4 bg-linear-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-2xl text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-between"
+                        >
+                          <span>
+                            +{increment} Ticket{increment > 1 ? "s" : ""}
+                          </span>
+                          <span className="text-sm opacity-90">
+                            → #{(queue?.latest_number || 0) + increment}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="mb-6">
+                      <p className="text-sm font-semibold text-gray-700 mb-2">
+                        Or Enter Custom Ticket Number:
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={customCutoffValue}
+                          onChange={(e) => setCustomCutoffValue(e.target.value)}
+                          placeholder={`Enter cutoff number (min: ${(queue?.latest_number || 0) + 1})`}
+                          min={(queue?.latest_number || 0) + 1}
+                          className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition font-semibold"
+                        />
+                        <button
+                          onClick={() => {
+                            const customNum = parseInt(customCutoffValue);
+                            if (
+                              !isNaN(customNum) &&
+                              customNum > (queue?.latest_number || 0)
+                            ) {
+                              handleSetCustomCutoff(customNum);
+                            }
+                          }}
+                          disabled={
+                            !customCutoffValue ||
+                            parseInt(customCutoffValue) <=
+                              (queue?.latest_number || 0)
+                          }
+                          className="px-6 py-3 bg-linear-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Set
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setShowCutoffModal(false)}
+                      className="w-full px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* WAITING LIST */}
+              <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-primary/20">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 rounded-xl bg-linear-to-br from-primary/10 to-primary/20 flex items-center justify-center">
+                    <FontAwesomeIcon
+                      icon={faList}
+                      className="text-2xl text-primary"
+                    />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900">
+                    Ticket List
+                  </h3>
+                </div>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
                   {tickets
                     .slice()
                     .sort((a, b) => {
@@ -420,24 +844,29 @@ const ManageQueue = () => {
                     })
                     .map((ticket) => {
                       const statusClasses = {
-                        waiting: "bg-yellow-100 text-yellow-800",
-                        serving: "bg-blue-100 text-blue-800",
-                        done: "bg-green-100 text-green-800",
-                        skipped: "bg-red-100 text-red-800",
+                        waiting:
+                          "bg-linear-to-r from-yellow-50 to-orange-50 border-yellow-200 text-yellow-900",
+                        serving:
+                          "bg-linear-to-r from-green-50 to-emerald-50 border-green-200 text-green-900",
+                        done: "bg-linear-to-r from-blue-50 to-cyan-50 border-blue-200 text-blue-900",
+                        skipped:
+                          "bg-linear-to-r from-red-50 to-pink-50 border-red-200 text-red-900",
                       };
 
                       return (
                         <div
                           key={ticket.id}
-                          className={`flex justify-between rounded-xl p-3 ${statusClasses[ticket.status as keyof typeof statusClasses] ?? "bg-gray-100 text-gray-800"}`}
+                          className={`flex justify-between rounded-xl p-4 border-2 ${statusClasses[ticket.status as keyof typeof statusClasses] ?? "bg-gray-50 border-gray-200 text-gray-800"} hover:shadow-md transition-all`}
                         >
-                          <div>
-                            <span className="font-semibold">
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-bold">
                               #{ticket.ticket_number}
-                            </span>{" "}
-                            {ticket.client_name}
+                            </span>
+                            <span className="font-medium">
+                              {ticket.client_name}
+                            </span>
                           </div>
-                          <span className="font-medium uppercase text-sm">
+                          <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-white/60 shadow-sm">
                             {ticket.status}
                           </span>
                         </div>

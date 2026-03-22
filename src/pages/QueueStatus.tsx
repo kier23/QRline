@@ -3,6 +3,16 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getGuestId } from "../lib/getGuestId";
 import Layout from "../components/Layout";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faChartBar,
+  faBullseye,
+  faBell,
+  faTicket,
+  faForward,
+} from "@fortawesome/free-solid-svg-icons";
+import { getToken } from "firebase/messaging";
+import { messaging } from "../lib/firebase";
 
 type Queue = {
   id: string;
@@ -15,6 +25,8 @@ type QueueTicket = {
   status: string;
   guest_id: string;
 };
+
+const VAPID_KEY = import.meta.env.VITE_VAPID_KEY;
 
 const QueueStatus = () => {
   const { queueId } = useParams();
@@ -42,10 +54,34 @@ const QueueStatus = () => {
   };
 
   useEffect(() => {
-    if ("Notification" in window && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
-  }, []);
+    const setupFCM = async () => {
+      if (!("Notification" in window)) return;
+
+      const permission = await Notification.requestPermission();
+
+      if (permission !== "granted") return;
+
+      try {
+        const token = await getToken(messaging, {
+          vapidKey: VAPID_KEY,
+        });
+
+        console.log("FCM Token:", token);
+
+        if (token) {
+          // 🔥 Save token to Supabase
+          await supabase.from("users").upsert({
+            guest_id: guestId,
+            fcm_token: token,
+          });
+        }
+      } catch (err) {
+        console.error("FCM error:", err);
+      }
+    };
+
+    setupFCM();
+  }, [guestId]);
 
   const fetchStatus = async () => {
     if (!queueId) return;
@@ -193,82 +229,139 @@ const QueueStatus = () => {
 
   return (
     <Layout showNavigation={false}>
-      <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-3xl">
-          <div className="mb-6 flex justify-between items-center">
-            <h2 className="text-2xl font-bold">Queue Status</h2>
+      <div className="min-h-screen bg-linear-to-br from-background via-orange-50/30 to-background py-12 px-4">
+        <div className="w-full max-w-4xl mx-auto">
+          {/* Header */}
+          <div className="mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-primary to-orange-700 flex items-center justify-center shadow-lg">
+                <FontAwesomeIcon
+                  icon={faChartBar}
+                  className="text-2xl text-white"
+                />
+              </div>
+              <div>
+                <h2 className="text-3xl font-bold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
+                  Queue Status
+                </h2>
+                <p className="text-gray-500 text-sm">
+                  Real-time queue information
+                </p>
+              </div>
+            </div>
             <button
               onClick={() => navigate(`/queue/${queueId}`)}
-              className="px-4 py-2 bg-gray-200 rounded-lg"
+              className="px-6 py-3 bg-white hover:bg-gray-50 text-gray-800 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all border border-gray-200"
             >
-              Back to Ticket
+              ← Back to Ticket
             </button>
           </div>
 
-          {loading && <p>Loading...</p>}
-          {error && <p className="text-red-600">{error}</p>}
+          {loading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl">
+              {error}
+            </div>
+          )}
 
           {!loading && !error && (
-            <div className="bg-white rounded-3xl shadow-xl p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-indigo-600 text-white rounded-2xl p-6 text-center">
-                  <p className="uppercase tracking-wide opacity-70">
-                    Now Serving
-                  </p>
-                  <h3 className="text-5xl font-bold">
+            <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-10 space-y-8 border border-primary/20">
+              {/* Status Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-linear-to-br from-primary via-orange-600 to-primary text-white rounded-2xl p-8 text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105">
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <FontAwesomeIcon icon={faBullseye} className="text-3xl" />
+                    <p className="uppercase tracking-wide opacity-90 font-semibold text-sm">
+                      Now Serving
+                    </p>
+                  </div>
+                  <h3 className="text-6xl font-extrabold drop-shadow-lg">
                     {queue?.latest_number ?? "--"}
                   </h3>
                 </div>
 
-                <div className="bg-indigo-500 text-white rounded-2xl p-6 text-center">
-                  <p className="uppercase tracking-wide opacity-70">
-                    Next Number
-                  </p>
-                  <h3 className="text-5xl font-bold">{nextNumber ?? "--"}</h3>
+                <div className="bg-linear-to-br from-primary/90 via-orange-500 to-primary/90 text-white rounded-2xl p-8 text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105">
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <FontAwesomeIcon icon={faForward} className="text-3xl" />
+                    <p className="uppercase tracking-wide opacity-90 font-semibold text-sm">
+                      Next Number
+                    </p>
+                  </div>
+                  <h3 className="text-6xl font-extrabold drop-shadow-lg">
+                    {nextNumber ?? "--"}
+                  </h3>
                 </div>
 
-                <div className="bg-white rounded-2xl p-6 border text-center">
-                  <p className="uppercase tracking-wide text-gray-500">
+                <div className="bg-white rounded-2xl p-8 border-2 border-primary text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary via-orange-600 to-primary"></div>
+                  <p className="uppercase tracking-wide text-gray-500 font-semibold text-sm mb-3">
                     Your Ticket
                   </p>
-                  <h3 className="text-4xl font-bold">
+                  <h3 className="text-5xl font-extrabold text-primary mb-4">
                     {userTicket ? `#${userTicket.ticket_number}` : "-"}
                   </h3>
-                  <p className="mt-2 text-gray-600">{userStatusText()}</p>
+                  <p className="text-gray-600 text-sm leading-relaxed">
+                    {userStatusText()}
+                  </p>
                 </div>
               </div>
 
+              {/* Notifications */}
               {!!notifications.length && (
-                <div className="rounded-lg border p-4 bg-gray-50 text-sm text-gray-800">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-semibold">Notifications</span>
+                <div className="rounded-2xl border-2 border-primary/20 p-6 bg-linear-to-br from-blue-50/50 to-cyan-50/50">
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-3">
+                      <FontAwesomeIcon
+                        icon={faBell}
+                        className="text-2xl text-primary"
+                      />
+                      <span className="font-bold text-gray-800 text-lg">
+                        Recent Notifications
+                      </span>
+                    </div>
                     <button
-                      className="text-indigo-600 hover:underline"
+                      className="px-4 py-2 bg-white hover:bg-gray-50 text-primary rounded-lg font-semibold text-sm transition-all shadow-md hover:shadow-lg"
                       onClick={() => setNotifications([])}
                     >
-                      Clear
+                      Clear All
                     </button>
                   </div>
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {notifications.map((msg, idx) => (
                       <li
                         key={`${idx}-${msg}`}
-                        className="rounded px-2 py-1 bg-white border"
+                        className="rounded-xl px-4 py-3 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all flex items-center gap-3"
                       >
-                        {msg}
+                        <span className="text-green-500">✓</span>
+                        <span className="text-gray-800 font-medium">{msg}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
+              {/* No Ticket Action */}
               {!userTicket && (
-                <div className="text-center">
+                <div className="text-center pt-6 border-t border-gray-100">
+                  <div className="inline-flex items-center gap-2 mb-4 text-gray-600">
+                    <FontAwesomeIcon
+                      icon={faTicket}
+                      className="text-3xl text-primary"
+                    />
+                    <p className="font-medium">
+                      You don't have an active ticket for this queue
+                    </p>
+                  </div>
                   <button
                     onClick={() => navigate(`/queue/${queueId}`)}
-                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl"
+                    className="px-8 py-4 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl hover:scale-105 transition-all"
                   >
-                    Create a Ticket
+                    <FontAwesomeIcon icon={faTicket} className="mr-2" /> Create
+                    a Ticket
                   </button>
                 </div>
               )}

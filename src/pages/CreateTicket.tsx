@@ -3,6 +3,12 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getGuestId } from "../lib/getGuestId";
 import Layout from "../components/Layout";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faTicket,
+  faMoneyBill,
+  faClipboardList,
+} from "@fortawesome/free-solid-svg-icons";
 
 const CreateTicket = () => {
   const { queueId } = useParams();
@@ -86,69 +92,129 @@ const CreateTicket = () => {
 
   return (
     <Layout showNavigation={false}>
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
-        <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-lg">
-          <h2 className="text-2xl font-bold mb-6 text-center">
-            🎫 Create New Ticket
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Ticket Number Preview */}
-            <div>
-              <label className="block text-gray-600 mb-1">Ticket Number</label>
-              <div className="bg-gray-100 p-3 rounded-xl text-xl font-bold">
-                #{nextNumber ?? "..."}
+      <div className="min-h-screen bg-linear-to-br from-background via-orange-50/30 to-background py-12 px-4">
+        <div className="w-full max-w-2xl mx-auto">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-10 border border-primary/20">
+            {/* Header */}
+            <div className="text-center space-y-3 mb-8">
+              <div className="w-20 h-20 mx-auto rounded-2xl bg-linear-to-br from-primary to-orange-700 flex items-center justify-center shadow-lg">
+                <FontAwesomeIcon
+                  icon={faTicket}
+                  className="text-4xl text-white"
+                />
               </div>
+              <h2 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
+                Create New Ticket
+              </h2>
+              <p className="text-gray-600 text-sm">
+                Fill in your details to join the queue
+              </p>
             </div>
 
-            {/* Client Name */}
-            <div>
-              <label className="block text-gray-600 mb-1">Client Name</label>
-              <input
-                type="text"
-                required
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                className="w-full p-3 border rounded-xl"
-              />
-            </div>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Ticket Number Preview */}
+              <div className="bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-2xl p-6 border border-primary/20 shadow-inner">
+                <label className="block text-sm font-semibold text-gray-600 mb-2">
+                  Your Ticket Number
+                </label>
+                <div className="text-center">
+                  <div className="text-6xl font-extrabold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
+                    #{nextNumber ?? "..."}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Remember this number
+                  </p>
+                </div>
+              </div>
 
-            {/* Email */}
-            <div>
-              <label className="block text-gray-600 mb-1">Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-3 border rounded-xl"
-              />
-            </div>
+              {/* Client Name */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 block">
+                  Client Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                  placeholder="Enter your full name"
+                />
+              </div>
 
-            {/* Payment Type */}
-            <div>
-              <label className="block text-gray-600 mb-1">Payment Type</label>
-              <select
-                value={payment}
-                onChange={(e) =>
-                  setPayment(e.target.value as "cashier" | "assessment")
-                }
-                className="w-full p-3 border rounded-xl"
+              {/* Email */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 block">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                  placeholder="your.email@example.com"
+                />
+              </div>
+
+              {/* Payment Type */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 block">
+                  Payment Type
+                </label>
+                <select
+                  value={payment}
+                  onChange={(e) =>
+                    setPayment(e.target.value as "cashier" | "assessment")
+                  }
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 cursor-pointer"
+                >
+                  <option value="cashier">
+                    <FontAwesomeIcon icon={faMoneyBill} className="mr-2" />{" "}
+                    Cashier
+                  </option>
+                  <option value="assessment">
+                    <FontAwesomeIcon icon={faClipboardList} className="mr-2" />{" "}
+                    Assessment
+                  </option>
+                </select>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all focus:outline-none focus:ring-4 focus:ring-primary/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                <option value="cashier">Cashier</option>
-                <option value="assessment">Assessment</option>
-              </select>
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 text-white p-4 rounded-2xl font-semibold hover:bg-indigo-700"
-            >
-              {loading ? "Creating..." : "Create Ticket"}
-            </button>
-          </form>
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Creating Ticket...
+                  </span>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faTicket} className="mr-2" /> Create
+                    Ticket
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </Layout>
