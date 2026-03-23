@@ -45,11 +45,25 @@ const QueueStatus = () => {
   const prevUserStatusRef = useRef<string | null>(null);
   const prevTicketNumberRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    window.onerror = (msg, url, line, col, error) => {
+      console.error("Global error:", msg, error);
+    };
+  }, []);
+
   const addNotification = (message: string) => {
     setNotifications((prev) => [message, ...prev].slice(0, 6));
 
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(message);
+    if (
+      "Notification" in window &&
+      Notification.permission === "granted" &&
+      typeof Notification === "function"
+    ) {
+      try {
+        new Notification(message);
+      } catch (e) {
+        console.warn("Notification failed:", e);
+      }
     }
   };
 
@@ -69,11 +83,10 @@ const QueueStatus = () => {
         console.log("FCM Token:", token);
 
         if (token) {
-          // 🔥 Save token to Supabase
-          await supabase.from("Queue_Tickets").upsert({
-            guest_id: guestId,
-            fcm_token: token,
-          });
+          await supabase
+            .from("Queue_Tickets")
+            .update({ fcm_token: token })
+            .eq("guest_id", guestId);
         }
       } catch (err) {
         console.error("FCM error:", err);
