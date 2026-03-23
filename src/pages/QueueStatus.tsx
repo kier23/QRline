@@ -70,7 +70,7 @@ const QueueStatus = () => {
 
         if (token) {
           // 🔥 Save token to Supabase
-          await supabase.from("users").upsert({
+          await supabase.from("Queue_Tickets").upsert({
             guest_id: guestId,
             fcm_token: token,
           });
@@ -136,6 +136,19 @@ const QueueStatus = () => {
     }
 
     setLoading(false);
+  };
+
+  const handleResubmitTicket = async () => {
+    if (!userTicket || userTicket.status !== "skipped") return;
+
+    const confirmResubmit = confirm(
+      "This will create a new ticket with the next available number. Your skipped ticket will remain in the system. Continue?",
+    );
+
+    if (!confirmResubmit) return;
+
+    // Navigate to create ticket page (no database change needed)
+    navigate(`/queue/${queueId}`);
   };
 
   useEffect(() => {
@@ -222,6 +235,10 @@ const QueueStatus = () => {
 
     if (userTicket.status === "serving") {
       return `You are being served now with ticket #${userTicket.ticket_number}.`;
+    }
+
+    if (userTicket.status === "skipped") {
+      return `Your ticket #${userTicket.ticket_number} was skipped. Please resubmit to get a new ticket.`;
     }
 
     return `Your ticket: #${userTicket.ticket_number} (status: ${userTicket.status}).`;
@@ -362,6 +379,25 @@ const QueueStatus = () => {
                   >
                     <FontAwesomeIcon icon={faTicket} className="mr-2" /> Create
                     a Ticket
+                  </button>
+                </div>
+              )}
+
+              {/* Resubmit Skipped Ticket */}
+              {userTicket && userTicket.status === "skipped" && (
+                <div className="text-center pt-6 border-t border-gray-100">
+                  <div className="inline-flex items-center gap-2 mb-4 text-red-600">
+                    <FontAwesomeIcon icon={faForward} className="text-3xl" />
+                    <p className="font-bold">
+                      Your ticket was skipped. Resubmit to get a new number.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleResubmitTicket}
+                    className="px-8 py-4 bg-linear-to-r from-red-600 via-orange-600 to-red-600 text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    <FontAwesomeIcon icon={faTicket} className="mr-2" />{" "}
+                    Resubmit Ticket
                   </button>
                 </div>
               )}

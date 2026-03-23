@@ -9,6 +9,8 @@ import {
   faMoneyBill,
   faClipboardList,
 } from "@fortawesome/free-solid-svg-icons";
+import { getToken } from "firebase/messaging";
+import { messaging } from "../lib/firebase";
 
 const CreateTicket = () => {
   const { queueId } = useParams();
@@ -46,45 +48,59 @@ const CreateTicket = () => {
 
     setLoading(true);
 
-    // prevent duplicates: same queue + same guest with active status
-    const { data: existingTickets, error: checkError } = await supabase
-      .from("Queue_Tickets")
-      .select("id")
-      .eq("queue_id", queueId)
-      .eq("guest_id", guestId)
-      .in("status", ["waiting", "in_service"]);
+    try {
+      // 🔔 Get FCM token FIRST
+      let fcmToken: string | null = null;
 
-    if (checkError) {
-      alert("Error checking existing tickets. Please try again.");
-      setLoading(false);
-      return;
-    }
+      try {
+        fcmToken = await getToken(messaging, {
+          vapidKey: import.meta.env.VITE_VAPID_KEY,
+        });
 
-    if (existingTickets && existingTickets.length > 0) {
-      alert(
-        "You already have an active ticket in this queue. Please finish or cancel that ticket before creating a new one.",
-      );
-      setLoading(false);
-      return;
-    }
+        console.log("FCM Token:", fcmToken);
+      } catch (err) {
+        console.warn("FCM token failed, continuing without it:", err);
+      }
 
-    const { error } = await supabase.from("Queue_Tickets").insert([
-      {
-        queue_id: queueId,
-        guest_id: guestId,
-        ticket_number: nextNumber,
-        client_name: clientName,
-        email: email,
-        payment: payment,
-        status: "waiting",
-      },
-    ]);
+      // 🚫 Check duplicate (exclude skipped tickets)
+      const { data: existingTickets, error: checkError } = await supabase
+        .from("Queue_Tickets")
+        .select("id, status")
+        .eq("queue_id", queueId)
+        .eq("guest_id", guestId)
+        .in("status", ["waiting", "serving"]);
 
-    if (!error) {
+      if (checkError) throw checkError;
+
+      if (existingTickets && existingTickets.length > 0) {
+        alert("You already have an active ticket.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Allow creating new ticket if user has skipped tickets
+
+      // ✅ Insert WITH token
+      const { error } = await supabase.from("Queue_Tickets").insert([
+        {
+          queue_id: Number(queueId),
+          guest_id: guestId,
+          ticket_number: nextNumber,
+          client_name: clientName,
+          email: email,
+          payment: payment,
+          status: "waiting",
+          fcm_token: fcmToken, // ✅ real token
+        },
+      ]);
+
+      if (error) throw error;
+
       alert(`Ticket #${nextNumber} created!`);
       navigate(`/queue/${queueId}/status`);
-    } else {
-      alert("Error creating ticket");
+    } catch (err: any) {
+      console.error("Create ticket error:", err);
+      alert(err.message || "Error creating ticket");
     }
 
     setLoading(false);
