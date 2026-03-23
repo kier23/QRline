@@ -46,7 +46,7 @@ const QueueStatus = () => {
   const prevTicketNumberRef = useRef<number | null>(null);
 
   useEffect(() => {
-    window.onerror = (msg, url, line, col, error) => {
+    window.onerror = (msg, error) => {
       console.error("Global error:", msg, error);
     };
   }, []);

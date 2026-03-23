@@ -1,7 +1,5 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTicket } from "@fortawesome/free-solid-svg-icons";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,7 +27,11 @@ const Layout: React.FC<LayoutProps> = ({ children, showNavigation = true }) => {
             className="text-2xl font-extrabold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent flex items-center gap-3"
           >
             <div className="w-10 h-10 rounded-xl bg-linear-to-br from-primary to-orange-700 flex items-center justify-center shadow-lg">
-              <FontAwesomeIcon icon={faTicket} className="text-xl text-white" />
+              <img
+                src="/PayFlow-Logo_white.png"
+                alt="PayFlow Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             PayFlow - PalawanSU
           </Link>

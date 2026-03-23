@@ -1,23 +1,52 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser } from "@fortawesome/free-solid-svg-icons";
 
 const CompleteProfile = () => {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
-        setError("Invalid or expired invite link");
+        // No valid session - redirect to login
+        navigate("/admin", { replace: true });
+        return;
       }
+
+      // Check if profile already exists
+      const { data: profile } = await supabase
+        .from("Profiles")
+        .select("id")
+        .eq("id", data.session.user.id)
+        .single();
+
+      if (profile) {
+        // Profile already exists - redirect to dashboard
+        navigate("/admin-dashboard", { replace: true });
+        return;
+      }
+
+      setIsAuthenticated(true);
     };
     checkSession();
-  }, []);
+  }, [navigate]);
+
+  // Don't render anything until authentication is verified
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-background via-orange-50/30 to-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary"></div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,14 +55,17 @@ const CompleteProfile = () => {
 
     const { data } = await supabase.auth.getSession();
     const user = data?.session?.user;
+
     if (!user) {
-      setError("User not authenticated");
-      setLoading(false);
+      // User not authenticated - redirect to login
+      navigate("/admin", { replace: true });
       return;
     }
+
     const { error: passwordError } = await supabase.auth.updateUser({
       password: password,
     });
+
     if (passwordError) {
       setError(passwordError.message);
       setLoading(false);
@@ -46,12 +78,13 @@ const CompleteProfile = () => {
       email: user.email,
       role: "admin",
     });
+
     if (profileError) {
       setError(profileError.message);
     } else {
       alert("Profile completed successfully!");
-      window.location.href = "/";
-      setError(null);
+      window.location.href = "/admin-dashboard";
+      return;
     }
     setLoading(false);
   };

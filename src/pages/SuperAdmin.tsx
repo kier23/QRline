@@ -10,6 +10,8 @@ import {
   faShieldHalved,
   faClipboardList,
   faGear,
+  faUserPlus,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 
 type Profile = {
@@ -39,6 +41,23 @@ const SuperAdmin: React.FC = () => {
     totalAdmins: 0,
     totalQueues: 0,
   });
+
+  // Invite dialog state
+  const [openInviteDialog, setOpenInviteDialog] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRoleId, setInviteRoleId] = useState<number>(2);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Delete confirmation state
+  const [openDeleteConfirm, setOpenDeleteConfirm] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<{ id: string; name: string; email: string } | null>(null);
+
+  // Notification state
+  const [notification, setNotification] = useState<{
+    show: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ show: false, message: "", type: "success" });
 
   const navigate = useNavigate();
 
@@ -127,6 +146,16 @@ const SuperAdmin: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-dismiss notification after 4 seconds
+  useEffect(() => {
+    if (notification.show) {
+      const timer = setTimeout(() => {
+        setNotification({ ...notification, show: false });
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -154,6 +183,115 @@ const SuperAdmin: React.FC = () => {
     setAccounts([]);
     setMetrics({ totalUsers: 0, totalAdmins: 0, totalQueues: 0 });
     navigate("/");
+  };
+
+  // ✅ Invite user function
+  const handleInviteSubmit = async () => {
+    if (!inviteEmail || !inviteRoleId) {
+      setNotification({
+        show: true,
+        message: "Please provide both email and role",
+        type: "error",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const { error } = await supabase.functions.invoke(
+        "invite_admin_creator",
+        {
+          body: {
+            email: inviteEmail.trim(),
+            role_id: inviteRoleId,
+            redirect_base: `${window.location.origin}/Signup`,
+          },
+        }
+      );
+
+      if (error) throw error;
+
+      setNotification({
+        show: true,
+        message: "✅ Invite sent successfully!",
+        type: "success",
+      });
+      setOpenInviteDialog(false);
+      setInviteEmail("");
+      setInviteRoleId(2);
+    } catch (err: any) {
+      setNotification({
+        show: true,
+        message: `❌ Failed to send invite: ${err.message || "Unknown error"}`,
+        type: "error",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ✅ Delete user function (adapted from SuperAdminAC)
+  const handleDeleteClick = (user: { id: string; name: string; email: string }) => {
+    setSelectedUser(user);
+    setOpenDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedUser) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Delete user's tickets first (if any)
+      const { error: ticketsError } = await supabase
+        .from("Tickets")
+        .delete()
+        .eq("user_id", selectedUser.id);
+
+      if (ticketsError) {
+        throw new Error(`Failed to delete user tickets: ${ticketsError.message}`);
+      }
+
+      // Delete user's profile
+      const { error: profileError } = await supabase
+        .from("Profiles")
+        .delete()
+        .eq("id", selectedUser.id);
+
+      if (profileError) {
+        throw new Error(`Failed to delete profile: ${profileError.message}`);
+      }
+
+      // Delete the Auth user (requires admin privileges)
+      const { error: authError } = await supabase.auth.admin.deleteUser(selectedUser.id);
+
+      if (authError) {
+        throw new Error(`Failed to delete auth user: ${authError.message}`);
+      }
+
+      // Remove from local state
+      setAccounts((prev) => prev.filter((u) => u.id !== selectedUser.id));
+      
+      setNotification({
+        show: true,
+        message: `🗑️ ${selectedUser.name || selectedUser.email} has been deleted.`,
+        type: "success",
+      });
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      setNotification({
+        show: true,
+        message: `❌ Failed to delete user: ${err.message || "Unknown error"}`,
+        type: "error",
+      });
+    } finally {
+      setOpenDeleteConfirm(false);
+      setSelectedUser(null);
+      setLoading(false);
+      await loadSuperAdminData();
+    }
   };
 
   const updateRole = async (userId: string, desiredRole: string) => {
@@ -310,13 +448,21 @@ const SuperAdmin: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleLogout}
-                className="px-6 py-3 bg-linear-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
-              >
-                <FontAwesomeIcon icon={faRightFromBracket} className="mr-2" />{" "}
-                Logout
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setOpenInviteDialog(true)}
+                  className="px-6 py-3 bg-linear-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                >
+                  <FontAwesomeIcon icon={faUserPlus} className="mr-2" /> Invite
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="px-6 py-3 bg-linear-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                >
+                  <FontAwesomeIcon icon={faRightFromBracket} className="mr-2" />{" "}
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
 
@@ -446,6 +592,13 @@ const SuperAdmin: React.FC = () => {
                             >
                               Make User
                             </button>
+                            <button
+                              onClick={() => handleDeleteClick({ id: row.id, name: row.name, email: row.email })}
+                              className="px-3 py-2 bg-linear-to-r from-red-500 to-red-600 text-white rounded-lg text-xs font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all"
+                              disabled={loading}
+                            >
+                              <FontAwesomeIcon icon={faTrash} />
+                            </button>
                           </div>
                         ) : (
                           <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
@@ -459,6 +612,148 @@ const SuperAdmin: React.FC = () => {
               </table>
             </div>
           </div>
+
+          {/* Invite User Dialog */}
+          {openInviteDialog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full border border-primary/20">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-2xl font-bold bg-linear-to-r from-green-500 to-green-600 bg-clip-text text-transparent">
+                    Invite User
+                  </h3>
+                  <button
+                    onClick={() => setOpenInviteDialog(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 block">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      required
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                      placeholder="user@example.com"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 block">
+                      Role
+                    </label>
+                    <select
+                      value={inviteRoleId}
+                      onChange={(e) => setInviteRoleId(Number(e.target.value))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-gray-900"
+                    >
+                      <option value={2}>Canteen Admin</option>
+                      <option value={3}>Hostel Admin</option>
+                      <option value={4}>Auditor</option>
+                    </select>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => setOpenInviteDialog(false)}
+                      className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleInviteSubmit}
+                      disabled={submitting}
+                      className="flex-1 px-6 py-3 bg-linear-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    >
+                      {submitting ? "Sending..." : "Send Invite"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Confirmation Dialog */}
+          {openDeleteConfirm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full border border-red-500/20">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                    <FontAwesomeIcon icon={faTrash} className="text-red-600 text-xl" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-red-600">Confirm Deletion</h3>
+                </div>
+
+                <p className="text-gray-700 mb-6">
+                  Are you sure you want to permanently delete{" "}
+                  <span className="font-bold text-gray-900">
+                    {selectedUser?.name || selectedUser?.email}
+                  </span>
+                  ? This action cannot be undone.
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setOpenDeleteConfirm(false);
+                      setSelectedUser(null);
+                    }}
+                    className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    className="flex-1 px-6 py-3 bg-linear-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notification Toast */}
+          {notification.show && (
+            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in">
+              <div
+                className={`px-6 py-4 rounded-xl shadow-2xl border ${
+                  notification.type === "success"
+                    ? "bg-green-500 text-white border-green-600"
+                    : notification.type === "error"
+                    ? "bg-red-500 text-white border-red-600"
+                    : "bg-blue-500 text-white border-blue-600"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  {notification.type === "success" && (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  {notification.type === "error" && (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                  {notification.type === "info" && (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                  <span className="font-semibold">{notification.message}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Layout>
