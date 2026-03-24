@@ -3,7 +3,6 @@ import ProtectedRoute from "./lib/ProtectedRoute";
 import { useEffect } from "react";
 import { getMessaging, getToken } from "firebase/messaging";
 import { firebaseApp } from "./lib/firebase";
-import { registerFCM } from "./lib/registerFCM";
 
 // Pages
 import LoginPage from "./pages/LoginPage";
