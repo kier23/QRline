@@ -1,7 +1,8 @@
 import { Routes, Route, BrowserRouter } from "react-router-dom";
 import ProtectedRoute from "./lib/ProtectedRoute";
 import { useEffect } from "react";
-import { requestNotificationPermission } from "./lib/firebase";
+import { getMessaging, getToken } from "firebase/messaging";
+import { firebaseApp } from "./lib/firebase";
 
 // Pages
 import LoginPage from "./pages/LoginPage";
@@ -17,14 +18,38 @@ import EndUserPage from "./pages/EndUserPage";
 
 function App() {
   useEffect(() => {
-    // Ask user for push permission on first load
-    requestNotificationPermission().then((token) => {
-      if (token) {
-        // TODO: send token to Supabase so backend can push notifications
-        console.log("User FCM token:", token);
+    async function registerFCM() {
+      if (!("serviceWorker" in navigator)) return;
+
+      try {
+        // 1️⃣ Register the service worker manually
+        const registration = await navigator.serviceWorker.register(
+          "/firebase-messaging-sw.js",
+          {
+            scope: "/",
+          },
+        );
+        console.log("SW registered:", registration);
+
+        // 2️⃣ Get FCM token
+        const messaging = getMessaging(firebaseApp);
+        const token = await getToken(messaging, {
+          vapidKey: "YOUR_VAPID_KEY_HERE",
+          serviceWorkerRegistration: registration,
+        });
+
+        if (token) {
+          console.log("FCM Token:", token);
+          // TODO: save this token to Supabase or your backend
+        }
+      } catch (error) {
+        console.error("FCM registration failed:", error);
       }
-    });
+    }
+
+    registerFCM();
   }, []);
+
   return (
     <BrowserRouter>
       <div className="App">
