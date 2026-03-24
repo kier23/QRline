@@ -51,3 +51,12 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+
+self.addEventListener("install", (event) => {
+  console.log("SW installed");
+  // ❌ DO NOT use skipWaiting for now
+});
+
+self.addEventListener("activate", (event) => {
+  console.log("SW activated");
+});
