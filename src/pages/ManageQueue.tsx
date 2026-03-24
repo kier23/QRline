@@ -219,76 +219,67 @@ const ManageQueue = () => {
           // 2. Use FCM token from ticket directly (more reliable)
           const fcmToken = ticket.fcm_token;
 
+          console.log(
+            `Ticket #${ticket.ticket_number} | latest: ${latestNumber} | token:`,
+            fcmToken,
+          );
+
           if (!fcmToken) {
             console.log(
               `No FCM token for ticket #${ticket.ticket_number}, skipping`,
             );
             continue;
           }
+          // 🚫 Skip invalid or already passed tickets
+          if (ticket.ticket_number <= latestNumber) continue;
+          const notified = new Set<number>();
 
-          const diff = ticket.ticket_number - latestNumber;
+          if (notified.has(ticket.ticket_number)) continue;
+          notified.add(ticket.ticket_number);
 
-          // 🔔 5 tickets away
-          if (diff === 5) {
-            console.log(
-              `Sending "5 away" notification for ticket #${ticket.ticket_number}`,
-            );
+          // 🎯 EXACT CONDITIONS (more reliable)
+          const isFiveAway = ticket.ticket_number === latestNumber + 5;
+          const isNext = ticket.ticket_number === latestNumber + 1;
 
-            const response = await fetch(
-              "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                },
-                body: JSON.stringify({
-                  token: fcmToken,
-                  message: `You're 5 numbers away! (#${ticket.ticket_number})`,
-                  link: `/queue/${queueId}`,
-                  title: "Queue Update",
-                }),
+          if (!isFiveAway && !isNext) continue;
+
+          // 🔔 Message + title
+          const message = isNext
+            ? `You're next! (#${ticket.ticket_number})`
+            : `You're 5 numbers away! (#${ticket.ticket_number})`;
+
+          const title = isNext ? "Your Turn!" : "Queue Update";
+
+          // 🚀 SEND PUSH
+          const response = await fetch(
+            "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
               },
-            );
+              body: JSON.stringify({
+                token: fcmToken,
+                message,
+                title,
+                link: `/queue/${queueId}/status`,
+              }),
+            },
+          );
 
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-          }
+          // 🧪 DEBUG (IMPORTANT)
+          const result = await response.json();
+          console.log(`Push result for #${ticket.ticket_number}:`, result);
 
-          // 🚨 it's your turn
-          if (diff === 1) {
-            console.log(
-              `Sending "your turn" notification for ticket #${ticket.ticket_number}`,
-            );
-
-            const response = await fetch(
-              "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                },
-                body: JSON.stringify({
-                  token: fcmToken,
-                  message: `You're next! (#${ticket.ticket_number})`,
-                  link: `/queue/${queueId}`,
-                  title: "Your Turn!",
-                }),
-              },
-            );
-
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
         } catch (err) {
           console.error(
             `Failed to send notification to ticket #${ticket.ticket_number}:`,
             err,
           );
-          // Continue to next ticket even if one fails
         }
       }
 
