@@ -22,7 +22,7 @@ const EndUserPage: React.FC = () => {
   const codeReader = useRef<BrowserQRCodeReader | null>(null);
   const controlsRef = useRef<any>(null);
 
-  // Check for active tickets on mount
+  // Check for active tickets on mount and when page gains focus
   useEffect(() => {
     const checkActiveTicket = async () => {
       const guestId = getGuestId();
@@ -48,6 +48,21 @@ const EndUserPage: React.FC = () => {
     };
 
     checkActiveTicket();
+
+    // Refresh when page gains focus
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkActiveTicket();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {

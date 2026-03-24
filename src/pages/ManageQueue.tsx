@@ -23,7 +23,7 @@ type Queue = {
   cutoff_number: number | null;
 };
 
-type TicketStatus = "waiting" | "serving" | "done" | "skipped";
+type TicketStatus = "waiting" | "serving" | "done" | "skipped" | "cancelled";
 
 type Ticket = {
   id: string;
@@ -266,7 +266,7 @@ const ManageQueue = () => {
           .eq("id", currentServing.id);
       }
 
-      // 2. Get next waiting ticket
+      // 2. Get next waiting ticket (skip cancelled ones)
       const { data: nextTicket, error } = await supabase
         .from("Queue_Tickets")
         .select("*")
@@ -281,7 +281,7 @@ const ManageQueue = () => {
         return;
       }
 
-      // ❗ If no next ticket → STOP (DON’T SET NULL)
+      // ❗ If no next ticket → STOP (DON'T SET NULL)
       if (!nextTicket) {
         console.log("No more tickets");
         setCurrentServing(null);
@@ -413,6 +413,68 @@ const ManageQueue = () => {
       if (updatedQueue) setQueue(updatedQueue);
 
       // playSound(); // disabled for testing number update only
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const cancelCurrent = async () => {
+    if (!queue || !currentServing || processing) return;
+    setProcessing(true);
+
+    try {
+      // Mark current ticket as cancelled
+      await supabase
+        .from("Queue_Tickets")
+        .update({ status: "cancelled" })
+        .eq("id", currentServing.id);
+
+      // Find next waiting ticket (automatically skips cancelled ones)
+      const { data: nextTicket } = await supabase
+        .from("Queue_Tickets")
+        .select("*")
+        .eq("queue_id", queue.id)
+        .eq("status", "waiting")
+        .gt("ticket_number", currentServing.ticket_number)
+        .order("ticket_number", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (!nextTicket) {
+        await supabase
+          .from("Queue")
+          .update({ latest_number: null })
+          .eq("id", queue.id);
+
+        setQueue((prev) => (prev ? { ...prev, latest_number: null } : prev));
+        setCurrentServing(null);
+      } else {
+        await supabase
+          .from("Queue_Tickets")
+          .update({ status: "serving" })
+          .eq("id", nextTicket.id);
+
+        await supabase
+          .from("Queue")
+          .update({ latest_number: nextTicket.ticket_number })
+          .eq("id", queue.id);
+
+        setQueue((prev) =>
+          prev ? { ...prev, latest_number: nextTicket.ticket_number } : prev,
+        );
+        setCurrentServing(nextTicket);
+
+        // Send notifications for the new serving ticket
+        await sendQueueNotifications(nextTicket.ticket_number);
+      }
+
+      await fetchTickets();
+      const { data: updatedQueue } = await supabase
+        .from("Queue")
+        .select("*")
+        .eq("id", queue.id)
+        .single();
+      if (updatedQueue) setQueue(updatedQueue);
     } finally {
       setProcessing(false);
     }
@@ -618,6 +680,13 @@ const ManageQueue = () => {
                     className="px-6 py-5 bg-linear-to-r from-red-500 to-red-600 text-white rounded-2xl text-base md:text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
                   >
                     ⏭ Skip
+                  </button>
+
+                  <button
+                    onClick={cancelCurrent}
+                    className="px-6 py-5 bg-linear-to-r from-red-700 to-red-800 text-white rounded-2xl text-base md:text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                  >
+                    ✕ Cancel
                   </button>
 
                   <button
@@ -843,6 +912,7 @@ const ManageQueue = () => {
                         serving: 1,
                         done: 2,
                         skipped: 3,
+                        cancelled: 4,
                       };
                       return order[a.status] - order[b.status];
                     })
@@ -854,6 +924,8 @@ const ManageQueue = () => {
                           "bg-linear-to-r from-green-50 to-emerald-50 border-green-200 text-green-900",
                         done: "bg-linear-to-r from-blue-50 to-cyan-50 border-blue-200 text-blue-900",
                         skipped:
+                          "bg-linear-to-r from-red-50 to-pink-50 border-red-200 text-red-900",
+                        cancelled:
                           "bg-linear-to-r from-red-50 to-pink-50 border-red-200 text-red-900",
                       };
 

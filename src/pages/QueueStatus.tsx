@@ -52,9 +52,18 @@ const QueueStatus = () => {
       e.preventDefault(); // stop auto popup
       setDeferredPrompt(e);
       console.log("Install prompt ready ✅");
+
+      // Store in localStorage as backup
+      localStorage.setItem("deferredPrompt", "available");
     };
 
     window.addEventListener("beforeinstallprompt", handler);
+
+    // Also check if PWA is already installed
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      console.log("Already running as PWA");
+      localStorage.setItem("pwaInstalled", "true");
+    }
 
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
@@ -82,17 +91,58 @@ const QueueStatus = () => {
   };
 
   const handleEnableAll = async () => {
-    if (!("Notification" in window)) return;
-
-    // 🔔 Request notification permission
-    const permission = await Notification.requestPermission();
-
-    if (permission !== "granted") {
-      alert("Please allow notifications first.");
+    if (!("Notification" in window)) {
+      alert("Your browser doesn't support notifications.");
       return;
     }
 
     try {
+      // 📲 Show install prompt FIRST (before notification permission)
+      if (deferredPrompt) {
+        try {
+          deferredPrompt.prompt();
+
+          const choice = await deferredPrompt.userChoice;
+
+          if (choice.outcome === "accepted") {
+            console.log("App installed ✅");
+            alert(
+              "App installed successfully! You can now receive notifications.",
+            );
+          } else {
+            console.log("Install dismissed ❌");
+          }
+
+          setDeferredPrompt(null);
+
+          // Small delay after install prompt
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        } catch (promptError) {
+          console.error("Install prompt error:", promptError);
+          // Continue to notification permission even if install fails
+        }
+      } else {
+        // Install prompt not ready yet - show message but continue
+        console.log(
+          "Install prompt not ready, continuing with notifications...",
+        );
+      }
+
+      // 🔔 Request notification permission AFTER install prompt
+      const permission = await Notification.requestPermission();
+
+      if (permission !== "granted") {
+        if (permission === "denied") {
+          alert(
+            "Notifications are blocked. Please enable them in your browser settings.",
+          );
+        } else {
+          alert("Please allow notifications to receive queue updates.");
+        }
+        return;
+      }
+
+      // Get FCM token for push notifications
       const token = await getToken(messaging, {
         vapidKey: VAPID_KEY,
       });
@@ -104,26 +154,21 @@ const QueueStatus = () => {
           .from("Queue_Tickets")
           .update({ fcm_token: token })
           .eq("guest_id", guestId);
-      }
-    } catch (err) {
-      console.error("FCM error:", err);
-    }
 
-    // 📲 Show install prompt AFTER permission
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-
-      const choice = await deferredPrompt.userChoice;
-
-      if (choice.outcome === "accepted") {
-        console.log("App installed ✅");
+        alert(
+          "Notifications enabled successfully! ✅\nYou'll receive updates when your number is called.",
+        );
       } else {
-        console.log("Install dismissed ❌");
+        alert(
+          "Failed to get notification token. Please try again or check your internet connection.",
+        );
       }
-
-      setDeferredPrompt(null);
-    } else {
-      console.log("Install not ready yet");
+    } catch (err: any) {
+      console.error("Enable notifications error:", err);
+      alert(
+        "Failed to enable notifications. Please try again.\n\nError: " +
+          (err.message || "Unknown error"),
+      );
     }
   };
 
@@ -240,7 +285,9 @@ const QueueStatus = () => {
         .eq("id", userTicket.id);
 
       alert("Ticket cancelled successfully");
-      fetchStatus();
+
+      // Redirect to CreateTicket page
+      navigate(`/queue/${queueId}`);
     } catch (err: any) {
       console.error("Cancel ticket error:", err);
       alert(err.message || "Error cancelling ticket");
@@ -396,10 +443,21 @@ const QueueStatus = () => {
                 <div className="text-center mb-6">
                   <button
                     onClick={handleEnableAll}
-                    className="px-6 py-3 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-semibold shadow-lg hover:scale-105 transition-all"
+                    disabled={
+                      !deferredPrompt &&
+                      window.matchMedia?.("(display-mode: standalone)")
+                        .matches === false
+                    }
+                    className="px-6 py-4 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
                     🔔 Enable Notifications & Install App
                   </button>
+                  {!deferredPrompt && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Install prompt will appear after visiting the site a few
+                      times
+                    </p>
+                  )}
                 </div>
                 <div className="bg-linear-to-br from-primary via-orange-600 to-primary text-white rounded-2xl p-8 text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105">
                   <div className="flex items-center justify-center gap-2 mb-3">
