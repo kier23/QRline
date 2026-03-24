@@ -15,27 +15,30 @@ const CompleteProfile = () => {
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
+
       if (!data.session) {
-        // No valid session - redirect to login
         navigate("/admin", { replace: true });
         return;
       }
 
-      // Check if profile already exists
+      const user = data.session.user;
+
       const { data: profile } = await supabase
         .from("Profiles")
-        .select("id")
-        .eq("id", data.session.user.id)
+        .select("*")
+        .eq("id", user.id)
         .single();
 
-      if (profile) {
-        // Profile already exists - redirect to dashboard
+      // ✅ If already completed → go dashboard
+      if (profile?.name && profile.name !== "admin") {
         navigate("/admin-dashboard", { replace: true });
         return;
       }
 
+      // ✅ Otherwise → stay here
       setIsAuthenticated(true);
     };
+
     checkSession();
   }, [navigate]);
 
@@ -72,12 +75,12 @@ const CompleteProfile = () => {
       return;
     }
 
-    const { error: profileError } = await supabase.from("Profiles").insert({
-      id: user.id,
-      name: username,
-      email: user.email,
-      role: "admin",
-    });
+    const { error: profileError } = await supabase
+      .from("Profiles")
+      .update({
+        name: username,
+      })
+      .eq("id", user.id);
 
     if (profileError) {
       setError(profileError.message);

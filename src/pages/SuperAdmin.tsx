@@ -45,12 +45,15 @@ const SuperAdmin: React.FC = () => {
   // Invite dialog state
   const [openInviteDialog, setOpenInviteDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRoleId, setInviteRoleId] = useState<number>(2);
   const [submitting, setSubmitting] = useState(false);
 
   // Delete confirmation state
   const [openDeleteConfirm, setOpenDeleteConfirm] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [selectedUser, setSelectedUser] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
 
   // Notification state
   const [notification, setNotification] = useState<{
@@ -187,10 +190,12 @@ const SuperAdmin: React.FC = () => {
 
   // ✅ Invite user function
   const handleInviteSubmit = async () => {
-    if (!inviteEmail || !inviteRoleId) {
+    const email = inviteEmail.trim();
+
+    if (!email || !email.includes("@")) {
       setNotification({
         show: true,
-        message: "Please provide both email and role",
+        message: "Please enter a valid email",
         type: "error",
       });
       return;
@@ -199,27 +204,51 @@ const SuperAdmin: React.FC = () => {
     setSubmitting(true);
 
     try {
-      const { error } = await supabase.functions.invoke(
-        "invite_admin_creator",
+      // 🔐 Get session
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error("User not logged in");
+      }
+      console.log("SESSION:", session);
+      console.log("TOKEN:", session?.access_token);
+      console.log("ANON KEY:", import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+      // 🔥 DIRECT FETCH (BYPASS invoke)
+      const res = await fetch(
+        "https://edfshthhipqcofhixayr.supabase.co/functions/v1/invite-admin",
         {
-          body: {
-            email: inviteEmail.trim(),
-            role_id: inviteRoleId,
-            redirect_base: `${window.location.origin}/Signup`,
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`, // ✅ WILL WORK HERE
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
-        }
+          body: JSON.stringify({
+            email,
+            name: "admin",
+            redirect_to: `${window.location.origin}/complete-profile`,
+          }),
+        },
       );
 
-      if (error) throw error;
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to send invite");
+      }
 
       setNotification({
         show: true,
-        message: "✅ Invite sent successfully!",
+        message: "Invite sent successfully! 📩",
         type: "success",
       });
+
       setOpenInviteDialog(false);
       setInviteEmail("");
-      setInviteRoleId(2);
     } catch (err: any) {
       setNotification({
         show: true,
@@ -232,7 +261,11 @@ const SuperAdmin: React.FC = () => {
   };
 
   // ✅ Delete user function (adapted from SuperAdminAC)
-  const handleDeleteClick = (user: { id: string; name: string; email: string }) => {
+  const handleDeleteClick = (user: {
+    id: string;
+    name: string;
+    email: string;
+  }) => {
     setSelectedUser(user);
     setOpenDeleteConfirm(true);
   };
@@ -251,7 +284,9 @@ const SuperAdmin: React.FC = () => {
         .eq("user_id", selectedUser.id);
 
       if (ticketsError) {
-        throw new Error(`Failed to delete user tickets: ${ticketsError.message}`);
+        throw new Error(
+          `Failed to delete user tickets: ${ticketsError.message}`,
+        );
       }
 
       // Delete user's profile
@@ -265,7 +300,9 @@ const SuperAdmin: React.FC = () => {
       }
 
       // Delete the Auth user (requires admin privileges)
-      const { error: authError } = await supabase.auth.admin.deleteUser(selectedUser.id);
+      const { error: authError } = await supabase.auth.admin.deleteUser(
+        selectedUser.id,
+      );
 
       if (authError) {
         throw new Error(`Failed to delete auth user: ${authError.message}`);
@@ -273,7 +310,7 @@ const SuperAdmin: React.FC = () => {
 
       // Remove from local state
       setAccounts((prev) => prev.filter((u) => u.id !== selectedUser.id));
-      
+
       setNotification({
         show: true,
         message: `🗑️ ${selectedUser.name || selectedUser.email} has been deleted.`,
@@ -292,23 +329,6 @@ const SuperAdmin: React.FC = () => {
       setLoading(false);
       await loadSuperAdminData();
     }
-  };
-
-  const updateRole = async (userId: string, desiredRole: string) => {
-    setLoading(true);
-    setError(null);
-    const { error: roleError } = await supabase
-      .from("Profiles")
-      .update({ role: desiredRole })
-      .eq("id", userId);
-
-    if (roleError) {
-      setError(roleError.message);
-      setLoading(false);
-      return;
-    }
-
-    await loadSuperAdminData();
   };
 
   if (authenticating) {
@@ -579,21 +599,13 @@ const SuperAdmin: React.FC = () => {
                         {row.role !== "superadmin" ? (
                           <div className="inline-flex gap-2">
                             <button
-                              onClick={() => updateRole(row.id, "admin")}
-                              className="px-3 py-2 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg text-xs font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all"
-                              disabled={loading}
-                            >
-                              Make Admin
-                            </button>
-                            <button
-                              onClick={() => updateRole(row.id, "user")}
-                              className="px-3 py-2 bg-linear-to-r from-gray-500 to-gray-600 text-white rounded-lg text-xs font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all"
-                              disabled={loading}
-                            >
-                              Make User
-                            </button>
-                            <button
-                              onClick={() => handleDeleteClick({ id: row.id, name: row.name, email: row.email })}
+                              onClick={() =>
+                                handleDeleteClick({
+                                  id: row.id,
+                                  name: row.name,
+                                  email: row.email,
+                                })
+                              }
                               className="px-3 py-2 bg-linear-to-r from-red-500 to-red-600 text-white rounded-lg text-xs font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all"
                               disabled={loading}
                             >
@@ -615,8 +627,13 @@ const SuperAdmin: React.FC = () => {
 
           {/* Invite User Dialog */}
           {openInviteDialog && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full border border-primary/20">
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+              {/* Backdrop with blur */}
+              <div
+                className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                onClick={() => setOpenInviteDialog(false)}
+              />
+              <div className="relative bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full border border-primary/20 pointer-events-auto">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-2xl font-bold bg-linear-to-r from-green-500 to-green-600 bg-clip-text text-transparent">
                     Invite User
@@ -625,8 +642,18 @@ const SuperAdmin: React.FC = () => {
                     onClick={() => setOpenInviteDialog(false)}
                     className="text-gray-400 hover:text-gray-600 transition-colors"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -644,21 +671,6 @@ const SuperAdmin: React.FC = () => {
                       className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-gray-900 placeholder:text-gray-400"
                       placeholder="user@example.com"
                     />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 block">
-                      Role
-                    </label>
-                    <select
-                      value={inviteRoleId}
-                      onChange={(e) => setInviteRoleId(Number(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-gray-900"
-                    >
-                      <option value={2}>Canteen Admin</option>
-                      <option value={3}>Hostel Admin</option>
-                      <option value={4}>Auditor</option>
-                    </select>
                   </div>
 
                   <div className="flex gap-3 pt-4">
@@ -683,13 +695,26 @@ const SuperAdmin: React.FC = () => {
 
           {/* Delete Confirmation Dialog */}
           {openDeleteConfirm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full border border-red-500/20">
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+              {/* Backdrop with blur */}
+              <div
+                className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                onClick={() => {
+                  setOpenDeleteConfirm(false);
+                  setSelectedUser(null);
+                }}
+              />
+              <div className="relative bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full border border-red-500/20 pointer-events-auto">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                    <FontAwesomeIcon icon={faTrash} className="text-red-600 text-xl" />
+                    <FontAwesomeIcon
+                      icon={faTrash}
+                      className="text-red-600 text-xl"
+                    />
                   </div>
-                  <h3 className="text-2xl font-bold text-red-600">Confirm Deletion</h3>
+                  <h3 className="text-2xl font-bold text-red-600">
+                    Confirm Deletion
+                  </h3>
                 </div>
 
                 <p className="text-gray-700 mb-6">
@@ -729,24 +754,54 @@ const SuperAdmin: React.FC = () => {
                   notification.type === "success"
                     ? "bg-green-500 text-white border-green-600"
                     : notification.type === "error"
-                    ? "bg-red-500 text-white border-red-600"
-                    : "bg-blue-500 text-white border-blue-600"
+                      ? "bg-red-500 text-white border-red-600"
+                      : "bg-blue-500 text-white border-blue-600"
                 }`}
               >
                 <div className="flex items-center gap-3">
                   {notification.type === "success" && (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                   )}
                   {notification.type === "error" && (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   )}
                   {notification.type === "info" && (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                   )}
                   <span className="font-semibold">{notification.message}</span>

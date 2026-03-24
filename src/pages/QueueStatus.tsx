@@ -45,6 +45,20 @@ const QueueStatus = () => {
   const prevUserStatusRef = useRef<string | null>(null);
   const prevTicketNumberRef = useRef<number | null>(null);
 
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault(); // stop auto popup
+      setDeferredPrompt(e);
+      console.log("Install prompt ready ✅");
+    };
+
+    window.addEventListener("beforeinstallprompt", handler);
+
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
   useEffect(() => {
     window.onerror = (msg, error) => {
       console.error("Global error:", msg, error);
@@ -67,7 +81,53 @@ const QueueStatus = () => {
     }
   };
 
-  useEffect(() => {
+  const handleEnableAll = async () => {
+    if (!("Notification" in window)) return;
+
+    // 🔔 Request notification permission
+    const permission = await Notification.requestPermission();
+
+    if (permission !== "granted") {
+      alert("Please allow notifications first.");
+      return;
+    }
+
+    try {
+      const token = await getToken(messaging, {
+        vapidKey: VAPID_KEY,
+      });
+
+      console.log("FCM Token:", token);
+
+      if (token) {
+        await supabase
+          .from("Queue_Tickets")
+          .update({ fcm_token: token })
+          .eq("guest_id", guestId);
+      }
+    } catch (err) {
+      console.error("FCM error:", err);
+    }
+
+    // 📲 Show install prompt AFTER permission
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+
+      const choice = await deferredPrompt.userChoice;
+
+      if (choice.outcome === "accepted") {
+        console.log("App installed ✅");
+      } else {
+        console.log("Install dismissed ❌");
+      }
+
+      setDeferredPrompt(null);
+    } else {
+      console.log("Install not ready yet");
+    }
+  };
+
+  /*   useEffect(() => {
     const setupFCM = async () => {
       if (!("Notification" in window)) return;
 
@@ -94,7 +154,7 @@ const QueueStatus = () => {
     };
 
     setupFCM();
-  }, [guestId]);
+  }, [guestId]); */
 
   const fetchStatus = async () => {
     if (!queueId) return;
@@ -303,6 +363,15 @@ const QueueStatus = () => {
               {/* Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-linear-to-br from-primary via-orange-600 to-primary text-white rounded-2xl p-8 text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105">
+                  <div className="text-center mb-6">
+                    <button
+                      onClick={handleEnableAll}
+                      className="px-6 py-3 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-semibold shadow-lg hover:scale-105 transition-all"
+                    >
+                      🔔 Enable Notifications & Install App
+                    </button>
+                  </div>
+
                   <div className="flex items-center justify-center gap-2 mb-3">
                     <FontAwesomeIcon icon={faBullseye} className="text-3xl" />
                     <p className="uppercase tracking-wide opacity-90 font-semibold text-sm">
