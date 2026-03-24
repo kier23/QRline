@@ -226,6 +226,7 @@ const ManageQueue = () => {
             body: JSON.stringify({
               token: user.fcm_token,
               message: `You're 5 numbers away! (#${ticket.ticket_number})`,
+              link: `/queue/${queueId}`, // 👈 opens correct page
             }),
           },
         );
@@ -243,7 +244,8 @@ const ManageQueue = () => {
             },
             body: JSON.stringify({
               token: user.fcm_token,
-              message: `You're 1 number away! (#${ticket.ticket_number})`,
+              message: `You're next! (#${ticket.ticket_number})`,
+              link: `/queue/${queueId}`, // 👈 opens correct page
             }),
           },
         );
