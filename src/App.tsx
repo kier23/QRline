@@ -43,10 +43,20 @@ function App() {
             "Queue Update";
           const body = payload.notification?.body || payload.data?.body || "";
 
-          new Notification(title, {
-            body,
-            icon: "/PayFlow-Logo_192.png",
-          });
+          // ✅ USE SERVICE WORKER INSTEAD
+          if (navigator.serviceWorker) {
+            navigator.serviceWorker.getRegistration().then((registration) => {
+              if (registration) {
+                registration.showNotification(title, {
+                  body,
+                  icon: "/icon-192.png",
+                  badge: "/icon-192.png",
+                  tag: "queue-update",
+                  data: { url: payload.data?.url || "/" },
+                });
+              }
+            });
+          }
         });
 
         // 3️⃣ Get token
