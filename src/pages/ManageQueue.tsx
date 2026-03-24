@@ -216,7 +216,6 @@ const ManageQueue = () => {
 
       for (const ticket of tickets) {
         try {
-          // 2. Use FCM token from ticket directly (more reliable)
           const fcmToken = ticket.fcm_token;
 
           console.log(
@@ -241,7 +240,7 @@ const ManageQueue = () => {
           const isFiveAway = ticket.ticket_number === latestNumber + 5;
           const isNext = ticket.ticket_number === latestNumber + 1;
 
-          if (!isFiveAway && !isNext) continue;
+          /* if (!isFiveAway && !isNext) continue; */
 
           // 🔔 Message + title
           const message = isNext
