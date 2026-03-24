@@ -362,16 +362,15 @@ const QueueStatus = () => {
             <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-10 space-y-8 border border-primary/20">
               {/* Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="text-center mb-6">
+                  <button
+                    onClick={handleEnableAll}
+                    className="px-6 py-3 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-semibold shadow-lg hover:scale-105 transition-all"
+                  >
+                    🔔 Enable Notifications & Install App
+                  </button>
+                </div>
                 <div className="bg-linear-to-br from-primary via-orange-600 to-primary text-white rounded-2xl p-8 text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105">
-                  <div className="text-center mb-6">
-                    <button
-                      onClick={handleEnableAll}
-                      className="px-6 py-3 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-semibold shadow-lg hover:scale-105 transition-all"
-                    >
-                      🔔 Enable Notifications & Install App
-                    </button>
-                  </div>
-
                   <div className="flex items-center justify-center gap-2 mb-3">
                     <FontAwesomeIcon icon={faBullseye} className="text-3xl" />
                     <p className="uppercase tracking-wide opacity-90 font-semibold text-sm">
