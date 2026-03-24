@@ -28,7 +28,7 @@ const EndUserPage: React.FC = () => {
       const guestId = getGuestId();
 
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("Queue_Tickets")
           .select("queue_id, status")
           .eq("guest_id", guestId)

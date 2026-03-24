@@ -17,14 +17,27 @@ messaging.onBackgroundMessage((payload) => {
 
   const title = payload?.notification?.title || "Queue Update";
   const body = payload?.notification?.body || "You have a new update.";
+  
+  // Extract URL from payload or use default
+  const url = payload?.data?.url || "/";
 
   self.registration.showNotification(title, {
     body,
-    icon: "/icon-192.png", // make sure this exists
-    tag: "queue-update", // prevents stacking duplicates
+    icon: "/PayFlow-Logo_192.png", // Use your actual icon
+    badge: "/PayFlow-Logo_192.png", // Badge for Android
+    image: "/screenshot1.jpg", // Optional preview image
+    tag: `queue-${Date.now()}`, // Unique tag to prevent stacking
+    renotify: true, // Vibrate on duplicate notifications
+    requireInteraction: true, // Keep notification until user interacts
     data: {
-      url: "/",
+      url: url,
+      timestamp: Date.now(),
     },
+    vibrate: [200, 100, 200], // Vibration pattern
+    actions: [
+      { action: "view", title: "View Queue" },
+      { action: "dismiss", title: "Dismiss" }
+    ],
   });
 });
 
@@ -33,15 +46,37 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const url = event.notification?.data?.url || "/";
+  const action = event.action;
 
+  // Handle custom actions
+  if (action === "dismiss") {
+    return; // Just close notification
+  }
+
+  // Default action: open the app
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
+      // Try to find existing window with matching URL
       for (const client of clientsArr) {
         if (client.url.includes(url) && "focus" in client) {
           return client.focus();
         }
       }
-      return clients.openWindow(url);
+      // No matching window, open new one
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
     })
   );
+});
+
+// ✅ Service worker lifecycle management
+self.addEventListener("activate", (event) => {
+  console.log("Service worker activated");
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener("install", (event) => {
+  console.log("Service worker installed");
+  self.skipWaiting(); // Force activation
 });

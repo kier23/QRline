@@ -241,13 +241,13 @@ const QueueStatus = () => {
           : (queueData.latest_number || 0) + 1,
       );
 
-      const existingUserTicket = (tickets || []).find(
-        (t) =>
-          t.guest_id === guestId &&
-          t.status !== "done" &&
-          t.status !== "skipped" &&
-          t.status !== "cancelled",
-      );
+      const existingUserTicket = (tickets || [])
+        .filter(
+          (t) =>
+            t.guest_id === guestId &&
+            !["done", "skipped", "cancelled"].includes(t.status),
+        )
+        .pop(); // 👈 gets the latest one
 
       setUserTicket(existingUserTicket || null);
     } catch (err) {
@@ -511,8 +511,8 @@ const QueueStatus = () => {
 
               {/* Notifications */}
               {!!notifications.length && (
-                <div className="rounded-2xl border-2 border-primary/20 p-6 bg-linear-to-br from-blue-50/50 to-cyan-50/50">
-                  <div className="flex justify-between items-center mb-4">
+                <div className="rounded-2xl border-2 border-primary/20 p-4 md:p-6 bg-linear-to-br from-blue-50/50 to-cyan-50/50">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div className="flex items-center gap-3">
                       <FontAwesomeIcon
                         icon={faBell}
@@ -523,7 +523,7 @@ const QueueStatus = () => {
                       </span>
                     </div>
                     <button
-                      className="px-4 py-2 bg-white hover:bg-gray-50 text-primary rounded-lg font-semibold text-sm transition-all shadow-md hover:shadow-lg"
+                      className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-gray-50 text-primary rounded-lg font-semibold text-sm transition-all shadow-md hover:shadow-lg border border-gray-200"
                       onClick={() => setNotifications([])}
                     >
                       Clear All

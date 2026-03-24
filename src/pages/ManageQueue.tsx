@@ -194,62 +194,107 @@ const ManageQueue = () => {
   const sendQueueNotifications = async (latestNumber: number) => {
     if (!queueId) return;
 
-    // 1. Get waiting tickets
-    const { data: tickets } = await supabase
-      .from("Queue_Tickets")
-      .select("ticket_number, guest_id")
-      .eq("queue_id", queueId)
-      .eq("status", "waiting");
+    try {
+      // 1. Get waiting tickets
+      const { data: tickets, error: ticketsError } = await supabase
+        .from("Queue_Tickets")
+        .select("ticket_number, guest_id, fcm_token")
+        .eq("queue_id", queueId)
+        .eq("status", "waiting");
 
-    for (const ticket of tickets || []) {
-      // 2. Get user's FCM token
-      const { data: user } = await supabase
-        .from("users")
-        .select("fcm_token")
-        .eq("guest_id", ticket.guest_id)
-        .single();
-
-      if (!user?.fcm_token) continue;
-
-      const diff = ticket.ticket_number - latestNumber;
-
-      // 🔔 5 tickets away
-      if (diff === 5) {
-        await fetch(
-          "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({
-              token: user.fcm_token,
-              message: `You're 5 numbers away! (#${ticket.ticket_number})`,
-              link: `/queue/${queueId}`, // 👈 opens correct page
-            }),
-          },
+      if (ticketsError) {
+        console.error(
+          "Failed to fetch tickets for notifications:",
+          ticketsError,
         );
+        return;
       }
 
-      // 🚨 it's your turn
-      if (diff === 1) {
-        await fetch(
-          "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({
-              token: user.fcm_token,
-              message: `You're next! (#${ticket.ticket_number})`,
-              link: `/queue/${queueId}`, // 👈 opens correct page
-            }),
-          },
-        );
+      if (!tickets || tickets.length === 0) return;
+
+      console.log(`Sending notifications to ${tickets.length} waiting tickets`);
+
+      for (const ticket of tickets) {
+        try {
+          // 2. Use FCM token from ticket directly (more reliable)
+          const fcmToken = ticket.fcm_token;
+
+          if (!fcmToken) {
+            console.log(
+              `No FCM token for ticket #${ticket.ticket_number}, skipping`,
+            );
+            continue;
+          }
+
+          const diff = ticket.ticket_number - latestNumber;
+
+          // 🔔 5 tickets away
+          if (diff === 5) {
+            console.log(
+              `Sending "5 away" notification for ticket #${ticket.ticket_number}`,
+            );
+
+            const response = await fetch(
+              "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  token: fcmToken,
+                  message: `You're 5 numbers away! (#${ticket.ticket_number})`,
+                  link: `/queue/${queueId}`,
+                  title: "Queue Update",
+                }),
+              },
+            );
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+          }
+
+          // 🚨 it's your turn
+          if (diff === 1) {
+            console.log(
+              `Sending "your turn" notification for ticket #${ticket.ticket_number}`,
+            );
+
+            const response = await fetch(
+              "https://edfshthhipqcofhixayr.supabase.co/functions/v1/send-push",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  token: fcmToken,
+                  message: `You're next! (#${ticket.ticket_number})`,
+                  link: `/queue/${queueId}`,
+                  title: "Your Turn!",
+                }),
+              },
+            );
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+          }
+        } catch (err) {
+          console.error(
+            `Failed to send notification to ticket #${ticket.ticket_number}:`,
+            err,
+          );
+          // Continue to next ticket even if one fails
+        }
       }
+
+      console.log("Notification sending complete");
+    } catch (err) {
+      console.error("sendQueueNotifications error:", err);
     }
   };
 

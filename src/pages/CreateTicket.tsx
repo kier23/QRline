@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getGuestId } from "../lib/getGuestId";
@@ -19,41 +19,27 @@ const CreateTicket = () => {
   const [email, setEmail] = useState("");
   const [payment, setPayment] = useState<"cashier" | "assessment">("cashier");
   const [loading, setLoading] = useState(false);
-  const [nextNumber, setNextNumber] = useState<number | null>(null);
-
-  // 🔢 Get next ticket number
-  useEffect(() => {
-    const fetchNextNumber = async () => {
-      const { data } = await supabase
-        .from("Queue_Tickets")
-        .select("ticket_number")
-        .eq("queue_id", queueId)
-        .order("ticket_number", { ascending: false })
-        .limit(1);
-
-      if (data && data.length > 0) {
-        setNextNumber(data[0].ticket_number + 1);
-      } else {
-        setNextNumber(1);
-      }
-    };
-
-    fetchNextNumber();
-  }, [queueId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const guestId = getGuestId();
-    if (!queueId || !nextNumber) return;
+    if (!queueId) return;
 
     setLoading(true);
 
     try {
-      // 🔔 Get FCM token FIRST with timeout
+      // 🔥 1. Get NEXT NUMBER from DB (atomic)
+      const { data: nextNumber, error: rpcError } = await supabase.rpc(
+        "get_next_ticket_number",
+        { q_id: Number(queueId) },
+      );
+
+      if (rpcError) throw rpcError;
+
+      // 🔔 2. Get FCM token (same as your code)
       let fcmToken: string | null = null;
 
       try {
-        // Add timeout to prevent hanging
         fcmToken = await Promise.race([
           getToken(messaging, {
             vapidKey: import.meta.env.VITE_VAPID_KEY,
@@ -62,17 +48,15 @@ const CreateTicket = () => {
             setTimeout(() => reject(new Error("FCM timeout")), 5000),
           ),
         ]);
-
-        console.log("FCM Token:", fcmToken);
       } catch (err) {
-        console.warn("FCM token failed, continuing without it:", err);
-        fcmToken = null; // Ensure it's null on error
+        console.warn("FCM token failed:", err);
+        fcmToken = null;
       }
 
-      // 🚫 Check duplicate (exclude skipped tickets)
+      // 🚫 3. Check active tickets
       const { data: existingTickets, error: checkError } = await supabase
         .from("Queue_Tickets")
-        .select("id, status")
+        .select("id")
         .eq("queue_id", queueId)
         .eq("guest_id", guestId)
         .in("status", ["waiting", "serving"]);
@@ -85,19 +69,17 @@ const CreateTicket = () => {
         return;
       }
 
-      // ✅ Allow creating new ticket if user has skipped tickets
-
-      // ✅ Insert WITH token
+      // ✅ 4. Insert using DB-generated number
       const { error } = await supabase.from("Queue_Tickets").insert([
         {
           queue_id: Number(queueId),
           guest_id: guestId,
-          ticket_number: nextNumber,
+          ticket_number: nextNumber, // 🔥 from RPC
           client_name: clientName,
-          email: email,
-          payment: payment,
+          email,
+          payment,
           status: "waiting",
-          fcm_token: fcmToken, // ✅ real token or null
+          fcm_token: fcmToken,
         },
       ]);
 
@@ -182,17 +164,35 @@ const CreateTicket = () => {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Ticket Number Preview */}
-              <div className="bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-2xl p-6 border border-primary/20 shadow-inner">
-                <label className="block text-sm font-semibold text-gray-600 mb-2">
-                  Your Ticket Number
-                </label>
-                <div className="text-center">
-                  <div className="text-6xl font-extrabold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
-                    #{nextNumber ?? "..."}
+              <div className="bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-2xl p-6 border-2 border-primary/30 shadow-inner relative overflow-hidden">
+                {/* Decorative background elements */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-orange-100/20 to-transparent rounded-full -ml-12 -mb-12"></div>
+
+                <div className="relative z-10">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="p-2 bg-linear-to-br from-primary/20 to-primary/10 rounded-xl">
+                      <FontAwesomeIcon
+                        icon={faTicket}
+                        className="text-lg text-primary"
+                      />
+                    </div>
+                    <label className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                      Your Ticket Number
+                    </label>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Remember this number
-                  </p>
+
+                  <div className="text-center py-4">
+                    <div className="inline-flex items-center justify-center px-8 py-4 bg-white/80 backdrop-blur-sm rounded-2xl border-2 border-primary/20 shadow-sm">
+                      <span className="text-4xl md:text-5xl font-black bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
+                        Will be assigned
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-3 font-medium flex items-center justify-center gap-1">
+                      <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                      Auto-generated upon submission
+                    </p>
+                  </div>
                 </div>
               </div>
 
