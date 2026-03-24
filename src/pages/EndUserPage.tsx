@@ -5,16 +5,50 @@ import { Input } from "@/components/ui/input";
 import { QrCode, Camera, Info, CheckCircle } from "lucide-react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faLightbulb } from "@fortawesome/free-solid-svg-icons";
+import { faLightbulb, faTicket } from "@fortawesome/free-solid-svg-icons";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+import { getGuestId } from "../lib/getGuestId";
 
 const EndUserPage: React.FC = () => {
   const navigate = useNavigate();
   const [queueId, setQueueId] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [hasActiveTicket, setHasActiveTicket] = useState(false);
+  const [activeTicketQueueId, setActiveTicketQueueId] = useState<string | null>(
+    null,
+  );
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const codeReader = useRef<BrowserQRCodeReader | null>(null);
   const controlsRef = useRef<any>(null);
+
+  // Check for active tickets on mount
+  useEffect(() => {
+    const checkActiveTicket = async () => {
+      const guestId = getGuestId();
+
+      try {
+        const { data, error } = await supabase
+          .from("Queue_Tickets")
+          .select("queue_id, status")
+          .eq("guest_id", guestId)
+          .in("status", ["waiting", "serving"])
+          .limit(1);
+
+        if (data && data.length > 0) {
+          setHasActiveTicket(true);
+          setActiveTicketQueueId(data[0].queue_id.toString());
+        } else {
+          setHasActiveTicket(false);
+          setActiveTicketQueueId(null);
+        }
+      } catch (err) {
+        console.error("Error checking active ticket:", err);
+      }
+    };
+
+    checkActiveTicket();
+  }, []);
 
   useEffect(() => {
     codeReader.current = new BrowserQRCodeReader();
@@ -40,8 +74,11 @@ const EndUserPage: React.FC = () => {
           videoRef.current,
           (result) => {
             if (result) {
-              setQueueId(result.getText());
+              const scannedQueueId = result.getText();
+              console.log("Scanned Queue ID:", scannedQueueId);
               stopScanning();
+              // Redirect immediately to the queue page
+              navigate(`/queue/${scannedQueueId}`);
             }
           },
         );
@@ -50,7 +87,7 @@ const EndUserPage: React.FC = () => {
         alert("Camera failed to start");
         setScanning(false);
       }
-    });
+    }, 100);
   };
 
   const stopScanning = () => {
@@ -173,6 +210,20 @@ const EndUserPage: React.FC = () => {
                     <CheckCircle className="w-5 h-5 mr-2" />
                     Join Queue
                   </Button>
+
+                  {/* My Ticket Button */}
+                  {hasActiveTicket && activeTicketQueueId && (
+                    <Button
+                      onClick={() =>
+                        navigate(`/queue/${activeTicketQueueId}/status`)
+                      }
+                      className="w-full font-bold py-6 text-base bg-linear-to-r from-green-600 via-emerald-600 to-green-600 hover:from-emerald-700 hover:via-emerald-700 hover:to-emerald-700 shadow-xl hover:shadow-2xl transition-all transform hover:scale-[1.02] text-white"
+                      size="lg"
+                    >
+                      <FontAwesomeIcon icon={faTicket} className="mr-2" />
+                      My Active Ticket
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

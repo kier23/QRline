@@ -106,12 +106,59 @@ const CreateTicket = () => {
     setLoading(false);
   };
 
+  const handleRecreateTicket = async () => {
+    const guestId = getGuestId();
+
+    if (!queueId) return;
+
+    try {
+      // Find all active tickets for this user in this queue
+      const { data: existingTickets } = await supabase
+        .from("Queue_Tickets")
+        .select("id, status")
+        .eq("queue_id", queueId)
+        .eq("guest_id", guestId)
+        .in("status", ["waiting", "serving"]);
+
+      if (existingTickets && existingTickets.length > 0) {
+        const confirmCancel = confirm(
+          `You have ${existingTickets.length} active ticket(s). This will cancel all of them and create a new ticket. Continue?`,
+        );
+
+        if (!confirmCancel) return;
+
+        // Cancel all existing tickets
+        const ticketIds = existingTickets.map((t) => t.id);
+        await supabase
+          .from("Queue_Tickets")
+          .update({ status: "cancelled" })
+          .in("id", ticketIds);
+      }
+
+      // Navigate to recreate ticket (form will reset)
+      window.location.reload();
+    } catch (err: any) {
+      console.error("Recreate ticket error:", err);
+      alert(err.message || "Error recreating ticket");
+    }
+  };
+
   return (
     <Layout showNavigation={false}>
       <div className="min-h-screen bg-linear-to-br from-background via-orange-50/30 to-background py-12 px-4">
         <div className="w-full max-w-2xl mx-auto">
           <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-10 border border-primary/20">
-            {/* Header */}
+            {/* Header with Home Button */}
+            <div className="flex items-center justify-between mb-6">
+              <button
+                onClick={() => navigate("/")}
+                className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-800 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all border border-gray-200 flex items-center gap-2"
+              >
+                ← Home
+              </button>
+            </div>
+
+            {/* Main Header */}
             <div className="text-center space-y-3 mb-8">
               <div className="w-20 h-20 mx-auto rounded-2xl bg-linear-to-br from-primary to-orange-700 flex items-center justify-center shadow-lg">
                 <FontAwesomeIcon
@@ -228,6 +275,17 @@ const CreateTicket = () => {
                     Ticket
                   </>
                 )}
+              </button>
+
+              {/* Recreate Ticket */}
+              <button
+                type="button"
+                onClick={handleRecreateTicket}
+                disabled={loading}
+                className="w-full py-4 bg-linear-to-r from-red-600 via-orange-600 to-red-600 text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all focus:outline-none focus:ring-4 focus:ring-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              >
+                <FontAwesomeIcon icon={faTicket} className="mr-2" /> Recreate
+                Ticket (Cancel Old)
               </button>
             </form>
           </div>

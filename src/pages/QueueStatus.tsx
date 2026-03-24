@@ -224,6 +224,29 @@ const QueueStatus = () => {
     navigate(`/queue/${queueId}`);
   };
 
+  const handleCancelTicket = async () => {
+    if (!userTicket) return;
+
+    const confirmCancel = confirm(
+      `Are you sure you want to cancel ticket #${userTicket.ticket_number}?`,
+    );
+
+    if (!confirmCancel) return;
+
+    try {
+      await supabase
+        .from("Queue_Tickets")
+        .update({ status: "cancelled" })
+        .eq("id", userTicket.id);
+
+      alert("Ticket cancelled successfully");
+      fetchStatus();
+    } catch (err: any) {
+      console.error("Cancel ticket error:", err);
+      alert(err.message || "Error cancelling ticket");
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
   }, [queueId]);
@@ -339,12 +362,20 @@ const QueueStatus = () => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => navigate(`/queue/${queueId}`)}
-              className="px-6 py-3 bg-white hover:bg-gray-50 text-gray-800 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all border border-gray-200"
-            >
-              ← Back to Ticket
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => navigate("/")}
+                className="px-4 py-3 bg-white hover:bg-gray-50 text-gray-800 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all border border-gray-200"
+              >
+                ← Home
+              </button>
+              <button
+                onClick={() => navigate(`/queue/${queueId}`)}
+                className="px-6 py-3 bg-white hover:bg-gray-50 text-gray-800 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all border border-gray-200"
+              >
+                ← Back to Ticket
+              </button>
+            </div>
           </div>
 
           {loading && (
@@ -394,6 +425,7 @@ const QueueStatus = () => {
                   </h3>
                 </div>
 
+                {/* Your Ticket Section */}
                 <div className="bg-white rounded-2xl p-8 border-2 border-primary text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary via-orange-600 to-primary"></div>
                   <p className="uppercase tracking-wide text-gray-500 font-semibold text-sm mb-3">
@@ -402,9 +434,19 @@ const QueueStatus = () => {
                   <h3 className="text-5xl font-extrabold text-primary mb-4">
                     {userTicket ? `#${userTicket.ticket_number}` : "-"}
                   </h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">
+                  <p className="text-gray-600 text-sm leading-relaxed mb-4">
                     {userStatusText()}
                   </p>
+                  {userTicket &&
+                    userTicket.status !== "done" &&
+                    userTicket.status !== "cancelled" && (
+                      <button
+                        onClick={handleCancelTicket}
+                        className="mt-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all"
+                      >
+                        Cancel Ticket
+                      </button>
+                    )}
                 </div>
               </div>
 
