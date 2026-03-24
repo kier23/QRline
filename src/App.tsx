@@ -34,7 +34,7 @@ function App() {
         // 2️⃣ Get FCM token
         const messaging = getMessaging(firebaseApp);
         const token = await getToken(messaging, {
-          vapidKey: "YOUR_VAPID_KEY_HERE",
+          vapidKey: import.meta.env.VITE_VAPID_KEY,
           serviceWorkerRegistration: registration,
         });
 
