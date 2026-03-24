@@ -231,16 +231,34 @@ const ManageQueue = () => {
             continue;
           }
           // 🚫 Skip invalid or already passed tickets
-          if (ticket.ticket_number <= latestNumber) continue;
+          if (ticket.ticket_number <= latestNumber) {
+            console.log(
+              `⏭️ Skip #${ticket.ticket_number} - already passed (latest: ${latestNumber})`,
+            );
+            continue;
+          }
 
-          if (notified.has(ticket.ticket_number)) continue;
+          if (notified.has(ticket.ticket_number)) {
+            console.log(`⏭️ Skip #${ticket.ticket_number} - already notified`);
+            continue;
+          }
           notified.add(ticket.ticket_number);
 
-          // 🎯 EXACT CONDITIONS (more reliable)
-          const isFiveAway = ticket.ticket_number === latestNumber - 5;
-          const isNext = ticket.ticket_number === latestNumber - 1;
+          // 🎯 EXACT CONDITIONS (FIXED - calculate difference correctly)
+          const diff = ticket.ticket_number - latestNumber;
+          const isFiveAway = diff === 5;
+          const isNext = diff === 1;
 
-          if (!isFiveAway && !isNext) continue;
+          console.log(
+            `📍 Ticket #${ticket.ticket_number} | diff: ${diff} | isFiveAway: ${isFiveAway} | isNext: ${isNext}`,
+          );
+
+          if (!isFiveAway && !isNext) {
+            console.log(
+              `⏭️ Skip #${ticket.ticket_number} - not at trigger point`,
+            );
+            continue;
+          }
 
           // 🔔 Message + title
           const message = isNext
