@@ -245,7 +245,8 @@ const QueueStatus = () => {
         (t) =>
           t.guest_id === guestId &&
           t.status !== "done" &&
-          t.status !== "skipped",
+          t.status !== "skipped" &&
+          t.status !== "cancelled",
       );
 
       setUserTicket(existingUserTicket || null);
