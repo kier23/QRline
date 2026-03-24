@@ -49,17 +49,24 @@ const CreateTicket = () => {
     setLoading(true);
 
     try {
-      // 🔔 Get FCM token FIRST
+      // 🔔 Get FCM token FIRST with timeout
       let fcmToken: string | null = null;
 
       try {
-        fcmToken = await getToken(messaging, {
-          vapidKey: import.meta.env.VITE_VAPID_KEY,
-        });
+        // Add timeout to prevent hanging
+        fcmToken = await Promise.race([
+          getToken(messaging, {
+            vapidKey: import.meta.env.VITE_VAPID_KEY,
+          }),
+          new Promise<string | null>((_, reject) =>
+            setTimeout(() => reject(new Error("FCM timeout")), 5000),
+          ),
+        ]);
 
         console.log("FCM Token:", fcmToken);
       } catch (err) {
         console.warn("FCM token failed, continuing without it:", err);
+        fcmToken = null; // Ensure it's null on error
       }
 
       // 🚫 Check duplicate (exclude skipped tickets)
@@ -90,7 +97,7 @@ const CreateTicket = () => {
           email: email,
           payment: payment,
           status: "waiting",
-          fcm_token: fcmToken, // ✅ real token
+          fcm_token: fcmToken, // ✅ real token or null
         },
       ]);
 
@@ -101,9 +108,8 @@ const CreateTicket = () => {
     } catch (err: any) {
       console.error("Create ticket error:", err);
       alert(err.message || "Error creating ticket");
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleRecreateTicket = async () => {
