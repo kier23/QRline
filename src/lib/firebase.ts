@@ -1,23 +1,44 @@
-// Import the functions you need from the SDKs you need
+// firebase.ts
 import { initializeApp } from "firebase/app";
-import { getMessaging } from "firebase/messaging";  
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getMessaging, getToken } from "firebase/messaging";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Your Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAx7qbBDkGb9wLkp8AcH8PG8ofy9S5moKY",
   authDomain: "payflow-e3a44.firebaseapp.com",
   projectId: "payflow-e3a44",
-  storageBucket: "payflow-e3a44.firebasestorage.app",
   messagingSenderId: "575188235068",
   appId: "1:575188235068:web:10ed57fd3f56a4f76a2439",
-  measurementId: "G-T2W8DJ0J7X"
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const messaging = getMessaging(app);
-const analytics = getAnalytics(app);
+export const firebaseApp = initializeApp(firebaseConfig);
+export const messaging = getMessaging(firebaseApp);
+
+/**
+ * Request notification permission and get FCM token
+ */
+export const requestNotificationPermission = async (): Promise<string | null> => {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      console.log("Notification permission not granted");
+      return null;
+    }
+
+    // Register service worker at root
+    const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+
+    // Get FCM token
+    const token = await getToken(messaging, {
+      vapidKey: "YOUR_VAPID_KEY_HERE",
+      serviceWorkerRegistration: registration,
+    });
+
+    console.log("FCM Token:", token);
+    return token;
+  } catch (error) {
+    console.error("Error getting FCM token:", error);
+    return null;
+  }
+};

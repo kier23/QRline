@@ -1,5 +1,7 @@
 import { Routes, Route, BrowserRouter } from "react-router-dom";
 import ProtectedRoute from "./lib/ProtectedRoute";
+import { useEffect } from "react";
+import { requestNotificationPermission } from "./lib/firebase";
 
 // Pages
 import LoginPage from "./pages/LoginPage";
@@ -14,6 +16,15 @@ import QueueStatus from "./pages/QueueStatus";
 import EndUserPage from "./pages/EndUserPage";
 
 function App() {
+  useEffect(() => {
+    // Ask user for push permission on first load
+    requestNotificationPermission().then((token) => {
+      if (token) {
+        // TODO: send token to Supabase so backend can push notifications
+        console.log("User FCM token:", token);
+      }
+    });
+  }, []);
   return (
     <BrowserRouter>
       <div className="App">
