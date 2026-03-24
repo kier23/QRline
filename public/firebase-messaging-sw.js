@@ -18,9 +18,20 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log("Background message received:", payload);
 
-  const title = payload?.data?.title || "Queue Update";
-  const body = payload?.data?.body || "You have a new update.";
-  const url = payload?.data?.url || "/";
+  const title =
+  payload.notification?.title ||
+  payload.data?.title ||
+  "Queue Update";
+
+const body =
+  payload.notification?.body ||
+  payload.data?.body ||
+  "You have a new update.";
+
+const url =
+  payload.data?.url ||
+  payload.fcmOptions?.link ||
+  "/";
 
   self.registration.showNotification(title, {
     body,
