@@ -316,6 +316,7 @@ const ManageQueue = () => {
         .from("Queue_Tickets")
         .select("*")
         .eq("queue_id", queue.id)
+        .gt("ticket_number", queue.latest_number ?? 0)
         .eq("status", "waiting")
         .order("ticket_number", { ascending: true })
         .limit(1)
@@ -329,7 +330,10 @@ const ManageQueue = () => {
       // ❗ If no next ticket → STOP (DON'T SET NULL)
       if (!nextTicket) {
         console.log("No more tickets");
-        setCurrentServing(null);
+
+        // ✅ Keep latest_number as is (last served)
+        setCurrentServing(null); // UI shows no one is serving
+        // queue.latest_number stays unchanged
         return;
       }
 
