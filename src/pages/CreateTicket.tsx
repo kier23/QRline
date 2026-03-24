@@ -28,15 +28,7 @@ const CreateTicket = () => {
     setLoading(true);
 
     try {
-      // 🔥 1. Get NEXT NUMBER from DB (atomic)
-      const { data: nextNumber, error: rpcError } = await supabase.rpc(
-        "get_next_ticket_number",
-        { q_id: Number(queueId) },
-      );
-
-      if (rpcError) throw rpcError;
-
-      // 🔔 2. Get FCM token (same as your code)
+      // 🔔 Get FCM token
       let fcmToken: string | null = null;
 
       try {
@@ -53,7 +45,7 @@ const CreateTicket = () => {
         fcmToken = null;
       }
 
-      // 🚫 3. Check active tickets
+      // 🚫 Check active tickets
       const { data: existingTickets, error: checkError } = await supabase
         .from("Queue_Tickets")
         .select("id")
@@ -69,23 +61,22 @@ const CreateTicket = () => {
         return;
       }
 
-      // ✅ 4. Insert using DB-generated number
-      const { error } = await supabase.from("Queue_Tickets").insert([
+      // 🔥 ONE RPC = increment + insert (atomic)
+      const { data: ticketNumber, error: rpcError } = await supabase.rpc(
+        "create_ticket",
         {
-          queue_id: Number(queueId),
-          guest_id: guestId,
-          ticket_number: nextNumber, // 🔥 from RPC
-          client_name: clientName,
-          email,
-          payment,
-          status: "waiting",
-          fcm_token: fcmToken,
+          q_id: Number(queueId),
+          g_id: guestId,
+          c_name: clientName,
+          c_email: email,
+          c_payment: payment,
+          c_token: fcmToken,
         },
-      ]);
+      );
 
-      if (error) throw error;
+      if (rpcError) throw rpcError;
 
-      alert(`Ticket #${nextNumber} created!`);
+      alert(`Ticket #${ticketNumber} created!`);
       navigate(`/queue/${queueId}/status`);
     } catch (err: any) {
       console.error("Create ticket error:", err);
@@ -166,8 +157,8 @@ const CreateTicket = () => {
               {/* Ticket Number Preview */}
               <div className="bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-2xl p-6 border-2 border-primary/30 shadow-inner relative overflow-hidden">
                 {/* Decorative background elements */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-orange-100/20 to-transparent rounded-full -ml-12 -mb-12"></div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-linear-to-tr from-orange-100/20 to-transparent rounded-full -ml-12 -mb-12"></div>
 
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-3">
