@@ -193,6 +193,7 @@ const ManageQueue = () => {
 
   const sendQueueNotifications = async (latestNumber: number) => {
     if (!queueId) return;
+    const notified = new Set<number>();
 
     try {
       // 1. Get waiting tickets
@@ -231,16 +232,15 @@ const ManageQueue = () => {
           }
           // 🚫 Skip invalid or already passed tickets
           if (ticket.ticket_number <= latestNumber) continue;
-          const notified = new Set<number>();
 
           if (notified.has(ticket.ticket_number)) continue;
           notified.add(ticket.ticket_number);
 
           // 🎯 EXACT CONDITIONS (more reliable)
-          const isFiveAway = ticket.ticket_number === latestNumber + 5;
-          const isNext = ticket.ticket_number === latestNumber + 1;
+          const isFiveAway = ticket.ticket_number === latestNumber - 5;
+          const isNext = ticket.ticket_number === latestNumber - 1;
 
-          /* if (!isFiveAway && !isNext) continue; */
+          if (!isFiveAway && !isNext) continue;
 
           // 🔔 Message + title
           const message = isNext
@@ -269,6 +269,12 @@ const ManageQueue = () => {
 
           // 🧪 DEBUG (IMPORTANT)
           const result = await response.json();
+
+          console.log("FCM RESPONSE:", result);
+
+          if (!response.ok) {
+            console.error("Push failed:", result);
+          }
           console.log(`Push result for #${ticket.ticket_number}:`, result);
 
           if (!response.ok) {
