@@ -3,6 +3,7 @@ import ProtectedRoute from "./lib/ProtectedRoute";
 import { useEffect } from "react";
 import { getMessaging, getToken } from "firebase/messaging";
 import { firebaseApp } from "./lib/firebase";
+import { onMessage } from "firebase/messaging";
 
 // Pages
 import LoginPage from "./pages/LoginPage";
@@ -22,17 +23,33 @@ function App() {
       if (!("serviceWorker" in navigator)) return;
 
       try {
-        // 1️⃣ Register the service worker manually
+        // 1️⃣ Register SW
         const registration = await navigator.serviceWorker.register(
           "/firebase-messaging-sw.js",
-          {
-            scope: "/",
-          },
+          { scope: "/" },
         );
         console.log("SW registered:", registration);
 
-        // 2️⃣ Get FCM token
+        // 2️⃣ Get messaging
         const messaging = getMessaging(firebaseApp);
+
+        // ✅ ADD THIS (foreground listener)
+        onMessage(messaging, (payload) => {
+          console.log("🔥 Foreground message:", payload);
+
+          const title =
+            payload.notification?.title ||
+            payload.data?.title ||
+            "Queue Update";
+          const body = payload.notification?.body || payload.data?.body || "";
+
+          new Notification(title, {
+            body,
+            icon: "/PayFlow-Logo_192.png",
+          });
+        });
+
+        // 3️⃣ Get token
         const token = await getToken(messaging, {
           vapidKey: import.meta.env.VITE_VAPID_KEY,
           serviceWorkerRegistration: registration,
@@ -40,7 +57,6 @@ function App() {
 
         if (token) {
           console.log("FCM Token:", token);
-          // TODO: save this token to Supabase or your backend
         }
       } catch (error) {
         console.error("FCM registration failed:", error);
