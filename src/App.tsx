@@ -49,8 +49,8 @@ function App() {
               if (registration) {
                 registration.showNotification(title, {
                   body,
-                  icon: "/icon-192.png",
-                  badge: "/icon-192.png",
+                  icon: "/PayFlow-Logo_192.png",
+                  badge: "/PayFlow-Logo_192.png",
                   tag: "queue-update",
                   data: { url: payload.data?.url || "/" },
                 });
