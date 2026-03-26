@@ -10,6 +10,10 @@ import {
   faBell,
   faTicket,
   faForward,
+  faHourglassHalf,
+  faCheckCircle,
+  faCheck,
+  faTimesCircle,
 } from "@fortawesome/free-solid-svg-icons";
 import { getToken } from "firebase/messaging";
 import { messaging } from "../lib/firebase";
@@ -38,7 +42,9 @@ const QueueStatus = () => {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
   const [userTicket, setUserTicket] = useState<QueueTicket | null>(null);
-
+  const [lastUserTicket, setLastUserTicket] = useState<QueueTicket | null>(
+    null,
+  ); // For showing done/skipped/cancelled
   const [notifications, setNotifications] = useState<string[]>([]);
 
   const prevNextNumberRef = useRef<number | null>(null);
@@ -46,6 +52,8 @@ const QueueStatus = () => {
   const prevTicketNumberRef = useRef<number | null>(null);
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [notificationPermissionGranted, setNotificationPermissionGranted] =
+    useState(false);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -172,35 +180,6 @@ const QueueStatus = () => {
     }
   };
 
-  /*   useEffect(() => {
-    const setupFCM = async () => {
-      if (!("Notification" in window)) return;
-
-      const permission = await Notification.requestPermission();
-
-      if (permission !== "granted") return;
-
-      try {
-        const token = await getToken(messaging, {
-          vapidKey: VAPID_KEY,
-        });
-
-        console.log("FCM Token:", token);
-
-        if (token) {
-          await supabase
-            .from("Queue_Tickets")
-            .update({ fcm_token: token })
-            .eq("guest_id", guestId);
-        }
-      } catch (err) {
-        console.error("FCM error:", err);
-      }
-    };
-
-    setupFCM();
-  }, [guestId]); */
-
   const fetchStatus = useCallback(async () => {
     if (!queueId) return;
 
@@ -241,15 +220,24 @@ const QueueStatus = () => {
           : (queueData.latest_number || 0) + 1,
       );
 
-      const existingUserTicket = (tickets || [])
+      // Get user's active ticket (not done/skipped/cancelled)
+      const activeUserTicket = (tickets || [])
         .filter(
           (t) =>
-            t.guest_id === guestId &&
-            !["done", "skipped", "cancelled"].includes(t.status),
+            t.guest_id === guestId && !["done", "cancelled"].includes(t.status),
         )
-        .pop(); // 👈 gets the latest one
+        .pop();
 
-      setUserTicket(existingUserTicket || null);
+      // Get user's most recent ticket (including done/skipped/cancelled)
+      const allUserTickets = (tickets || [])
+        .filter((t) => t.guest_id === guestId)
+        .sort((a, b) => b.ticket_number - a.ticket_number);
+
+      const mostRecentTicket =
+        allUserTickets.length > 0 ? allUserTickets[0] : null;
+
+      setUserTicket(activeUserTicket || null);
+      setLastUserTicket(mostRecentTicket);
     } catch (err) {
       setError("Unexpected error loading queue status.");
     }
@@ -346,53 +334,6 @@ const QueueStatus = () => {
     };
   }, [queueId, fetchStatus]);
 
-  useEffect(() => {
-    if (!queueId) return;
-
-    const queueChannel = supabase
-      .channel(`queue-status-${queueId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "Queue",
-          filter: `id=eq.${queueId}`,
-        },
-        (payload) => {
-          console.log("Queue changed:", payload);
-          fetchStatus();
-        },
-      )
-      .subscribe((status) => {
-        console.log("Queue channel status:", status);
-      });
-
-    const ticketChannel = supabase
-      .channel(`queue-status-tickets-${queueId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "Queue_Tickets",
-          filter: `queue_id=eq.${queueId}`,
-        },
-        (payload) => {
-          console.log("Ticket changed:", payload);
-          fetchStatus();
-        },
-      )
-      .subscribe((status) => {
-        console.log("Ticket channel status:", status);
-      });
-
-    return () => {
-      supabase.removeChannel(queueChannel);
-      supabase.removeChannel(ticketChannel);
-    };
-  }, [queueId]);
-
   const userStatusText = () => {
     if (!userTicket) {
       return "You do not have an active ticket for this queue.";
@@ -459,9 +400,9 @@ const QueueStatus = () => {
           )}
 
           {!loading && !error && (
-            <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-10 space-y-8 border border-primary/20">
-              {/* Status Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-3xl shadow-2xl p-4 md:p-8 lg:p-10 space-y-4 md:space-y-6 lg:space-y-8 border border-primary/20">
+              {/* Status Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
                 <div className="text-center mb-6">
                   <button
                     onClick={handleEnableAll}
@@ -505,28 +446,238 @@ const QueueStatus = () => {
                   </h3>
                 </div>
 
-                {/* Your Ticket Section */}
-                <div className="bg-white rounded-2xl p-8 border-2 border-primary text-center shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary via-orange-600 to-primary"></div>
-                  <p className="uppercase tracking-wide text-gray-500 font-semibold text-sm mb-3">
-                    Your Ticket
-                  </p>
-                  <h3 className="text-5xl font-extrabold text-primary mb-4">
-                    {userTicket ? `#${userTicket.ticket_number}` : "-"}
-                  </h3>
-                  <p className="text-gray-600 text-sm leading-relaxed mb-4">
-                    {userStatusText()}
-                  </p>
-                  {userTicket &&
-                    userTicket.status !== "done" &&
-                    userTicket.status !== "cancelled" && (
-                      <button
-                        onClick={handleCancelTicket}
-                        className="mt-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all"
-                      >
-                        Cancel Ticket
-                      </button>
+                {/* Your Ticket Card - Merged with Status Banner */}
+                <div
+                  className={`rounded-2xl border-2 shadow-xl transition-all transform hover:scale-105 relative overflow-hidden ${
+                    lastUserTicket?.status === "waiting"
+                      ? "bg-linear-to-br from-yellow-50 to-orange-50 border-yellow-300"
+                      : lastUserTicket?.status === "serving"
+                        ? "bg-linear-to-br from-green-50 to-emerald-50 border-green-300"
+                        : lastUserTicket?.status === "done"
+                          ? "bg-linear-to-br from-blue-50 to-cyan-50 border-blue-300"
+                          : lastUserTicket?.status === "skipped"
+                            ? "bg-linear-to-br from-red-50 to-pink-50 border-red-300"
+                            : lastUserTicket?.status === "cancelled"
+                              ? "bg-linear-to-br from-gray-50 to-slate-50 border-gray-300"
+                              : "bg-white border-primary"
+                  }`}
+                >
+                  {lastUserTicket && (
+                    <>
+                      {/* Top Status Bar */}
+                      <div
+                        className={`absolute top-0 left-0 w-full h-1 ${
+                          lastUserTicket.status === "waiting"
+                            ? "bg-yellow-500"
+                            : lastUserTicket.status === "serving"
+                              ? "bg-green-500"
+                              : lastUserTicket.status === "done"
+                                ? "bg-blue-500"
+                                : lastUserTicket.status === "skipped"
+                                  ? "bg-red-500"
+                                  : lastUserTicket.status === "cancelled"
+                                    ? "bg-gray-500"
+                                    : "bg-primary"
+                        }`}
+                      ></div>
+
+                      {/* Status Badge */}
+                      <div className="absolute top-3 right-3 px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow-md">
+                        <span
+                          className={`text-xs font-bold uppercase ${
+                            lastUserTicket.status === "waiting"
+                              ? "text-yellow-700"
+                              : lastUserTicket.status === "serving"
+                                ? "text-green-700"
+                                : lastUserTicket.status === "done"
+                                  ? "text-blue-700"
+                                  : lastUserTicket.status === "skipped"
+                                    ? "text-red-700"
+                                    : lastUserTicket.status === "cancelled"
+                                      ? "text-gray-700"
+                                      : "text-gray-700"
+                          }`}
+                        >
+                          {lastUserTicket.status === "waiting" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faHourglassHalf}
+                                className="mr-1"
+                              />{" "}
+                              Waiting
+                            </>
+                          )}
+                          {lastUserTicket.status === "serving" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faCheckCircle}
+                                className="mr-1"
+                              />{" "}
+                              Serving
+                            </>
+                          )}
+                          {lastUserTicket.status === "done" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faCheck}
+                                className="mr-1"
+                              />{" "}
+                              Done
+                            </>
+                          )}
+                          {lastUserTicket.status === "skipped" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faForward}
+                                className="mr-1"
+                              />{" "}
+                              Skipped
+                            </>
+                          )}
+                          {lastUserTicket.status === "cancelled" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faTimesCircle}
+                                className="mr-1"
+                              />{" "}
+                              Cancelled
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Main Content */}
+                  <div className="p-6 md:p-8">
+                    <p className="uppercase tracking-wide text-gray-500 font-semibold text-sm mb-4">
+                      Your Ticket
+                    </p>
+
+                    {userTicket ? (
+                      <>
+                        <h3 className="text-5xl font-extrabold text-primary mb-4">
+                          #{userTicket.ticket_number}
+                        </h3>
+                        <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                          {userStatusText()}
+                        </p>
+                        {userTicket.status !== "done" &&
+                          userTicket.status !== "cancelled" && (
+                            <button
+                              onClick={handleCancelTicket}
+                              className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all text-sm md:text-base"
+                            >
+                              Cancel Ticket
+                            </button>
+                          )}
+                      </>
+                    ) : lastUserTicket ? (
+                      <>
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                          <div
+                            className={`w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center ${
+                              lastUserTicket.status === "waiting"
+                                ? "bg-yellow-500"
+                                : lastUserTicket.status === "serving"
+                                  ? "bg-green-500"
+                                  : lastUserTicket.status === "done"
+                                    ? "bg-blue-500"
+                                    : lastUserTicket.status === "skipped"
+                                      ? "bg-red-500"
+                                      : "bg-gray-500"
+                            }`}
+                          >
+                            <span className="text-white font-bold text-xl md:text-2xl">
+                              #{lastUserTicket.ticket_number}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="font-bold text-gray-800 text-base md:text-lg uppercase tracking-wide mb-2">
+                          {lastUserTicket.status === "waiting" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faHourglassHalf}
+                                className="mr-2"
+                              />{" "}
+                              Waiting in Line
+                            </>
+                          )}
+                          {lastUserTicket.status === "serving" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faCheckCircle}
+                                className="mr-2"
+                              />{" "}
+                              Being Served Now
+                            </>
+                          )}
+                          {lastUserTicket.status === "done" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faCheck}
+                                className="mr-2"
+                              />{" "}
+                              Completed
+                            </>
+                          )}
+                          {lastUserTicket.status === "skipped" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faForward}
+                                className="mr-2"
+                              />{" "}
+                              Skipped
+                            </>
+                          )}
+                          {lastUserTicket.status === "cancelled" && (
+                            <>
+                              <FontAwesomeIcon
+                                icon={faTimesCircle}
+                                className="mr-2"
+                              />{" "}
+                              Cancelled
+                            </>
+                          )}
+                        </p>
+                        <p className="text-xs md:text-sm text-gray-600 mb-4">
+                          {lastUserTicket.status === "waiting" &&
+                            `You're in line for queue ${queueId}`}
+                          {lastUserTicket.status === "serving" &&
+                            "Please proceed to the counter"}
+                          {lastUserTicket.status === "done" &&
+                            "Your transaction has been completed"}
+                          {lastUserTicket.status === "skipped" &&
+                            "You missed your turn. Please resubmit."}
+                          {lastUserTicket.status === "cancelled" &&
+                            "You cancelled this ticket"}
+                        </p>
+                        {lastUserTicket.status === "skipped" && (
+                          <button
+                            onClick={handleResubmitTicket}
+                            className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all text-sm md:text-base"
+                          >
+                            🔄 Resubmit Ticket
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="text-4xl md:text-5xl font-extrabold text-gray-400 mb-4">
+                          --
+                        </h3>
+                        <p className="text-gray-600 text-sm leading-relaxed">
+                          You do not have an active ticket for this queue.
+                        </p>
+                        <button
+                          onClick={() => navigate(`/queue/${queueId}`)}
+                          className="mt-4 w-full px-4 py-3 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all text-sm md:text-base"
+                        >
+                          Create a Ticket
+                        </button>
+                      </>
                     )}
+                  </div>
                 </div>
               </div>
 

@@ -14,24 +14,13 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// 🔔 Handle background messages
+// 🔔 Handle background messages (DATA-ONLY)
 messaging.onBackgroundMessage((payload) => {
   console.log("Background message received:", payload);
 
-  const title =
-  payload.notification?.title ||
-  payload.data?.title ||
-  "Queue Update";
-
-const body =
-  payload.notification?.body ||
-  payload.data?.body ||
-  "You have a new update.";
-
-const url =
-  payload.data?.url ||
-  payload.fcmOptions?.link ||
-  "/";
+  const title = payload.data?.title || "Queue Update";
+  const body = payload.data?.body || "You have a new update.";
+  const url = payload.data?.url || "/";
 
   self.registration.showNotification(title, {
     body,
@@ -63,11 +52,11 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-self.addEventListener("install", (event) => {
+// Optional lifecycle logs
+self.addEventListener("install", () => {
   console.log("SW installed");
-  // ❌ DO NOT use skipWaiting for now
 });
 
-self.addEventListener("activate", (event) => {
+self.addEventListener("activate", () => {
   console.log("SW activated");
 });

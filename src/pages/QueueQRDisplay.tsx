@@ -150,6 +150,21 @@ const QueueQRDisplay = () => {
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl p-8 md:p-12 border border-primary/20">
             {/* QR Code Section */}
             <div className="text-center mb-10">
+              {/* Queue ID Display - Large for TV/Distance */}
+              <div className="mb-8">
+                <div className="inline-flex flex-col items-center justify-center px-8 md:px-12 py-4 md:py-6 bg-linear-to-br from-purple-600 to-indigo-700 border-4 border-purple-300 rounded-3xl shadow-2xl min-w-70 md:min-w-100">
+                  <span className="text-sm md:text-lg font-bold text-purple-200 uppercase tracking-widest mb-1 md:mb-2">
+                    Queue ID
+                  </span>
+                  <span
+                    className="text-3xl md:text-5xl lg:text-6xl font-mono font-black text-white select-all tracking-wider drop-shadow-lg"
+                    style={{ fontFamily: "monospace" }}
+                  >
+                    {queue.id}
+                  </span>
+                </div>
+              </div>
+
               <div className="inline-block p-6 bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-3xl border-2 border-primary/20 shadow-xl mb-6">
                 <img
                   src={queue.qr}

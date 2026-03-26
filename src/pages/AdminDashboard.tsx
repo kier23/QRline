@@ -3,7 +3,28 @@ import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faClipboardList } from "@fortawesome/free-solid-svg-icons";
+import {
+  faClipboardList,
+  faChartLine,
+  faCalendarAlt,
+  faHourglassHalf,
+  faCheck,
+  faForward,
+  faTimesCircle,
+} from "@fortawesome/free-solid-svg-icons";
+import {
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 type Profile = {
   id: string;
@@ -22,6 +43,16 @@ type QueueItem = {
   latest_number: number;
 };
 
+type TicketAnalytics = {
+  waiting: number;
+  serving: number;
+  done: number;
+  skipped: number;
+  cancelled: number;
+};
+
+type TimeFilter = "weekly" | "monthly" | "yearly";
+
 const AdminDashboard = () => {
   const [admin, setAdmin] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +60,15 @@ const AdminDashboard = () => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [creatingQueue, setCreatingQueue] = useState(false);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("weekly");
+  const [ticketAnalytics, setTicketAnalytics] = useState<TicketAnalytics>({
+    waiting: 0,
+    serving: 0,
+    done: 0,
+    skipped: 0,
+    cancelled: 0,
+  });
+  const [queueGrowthData, setQueueGrowthData] = useState<any[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -80,6 +120,69 @@ const AdminDashboard = () => {
     };
     fetchProfiles();
   }, []);
+
+  // Fetch ticket analytics based on time filter
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (!admin || queue.length === 0) return;
+
+      const queueIds = queue.map((q) => q.id);
+
+      // Calculate date range based on filter
+      const now = new Date();
+      let startDate = new Date();
+
+      if (timeFilter === "weekly") {
+        startDate.setDate(now.getDate() - 7);
+      } else if (timeFilter === "monthly") {
+        startDate.setMonth(now.getMonth() - 1);
+      } else if (timeFilter === "yearly") {
+        startDate.setFullYear(now.getFullYear() - 1);
+      }
+
+      // Fetch tickets for admin's queues
+      const { data: tickets } = await supabase
+        .from("Queue_Tickets")
+        .select("status, created_at")
+        .in("queue_id", queueIds)
+        .gte("created_at", startDate.toISOString());
+
+      if (tickets) {
+        const analytics: TicketAnalytics = {
+          waiting: 0,
+          serving: 0,
+          done: 0,
+          skipped: 0,
+          cancelled: 0,
+        };
+
+        tickets.forEach((ticket) => {
+          if (ticket.status in analytics) {
+            analytics[ticket.status as keyof TicketAnalytics]++;
+          }
+        });
+
+        setTicketAnalytics(analytics);
+      }
+
+      // Fetch queue growth data
+      const { data: queueStats } = await supabase
+        .from("Queue")
+        .select("latest_number, created_at")
+        .in("id", queueIds)
+        .order("created_at", { ascending: true });
+
+      if (queueStats) {
+        const growthData = queueStats.map((q) => ({
+          name: new Date(q.created_at).toLocaleDateString(),
+          tickets: q.latest_number,
+        }));
+        setQueueGrowthData(growthData);
+      }
+    };
+
+    fetchAnalytics();
+  }, [admin, queue, timeFilter]);
 
   const handleCreateQueue = async () => {
     if (!admin) {
@@ -296,6 +399,230 @@ const AdminDashboard = () => {
               </>
             )}
           </div>
+
+          {/* ANALYTICS SECTION */}
+          {queue.length > 0 && (
+            <div className="bg-white rounded-3xl shadow-2xl p-10 border border-primary/20">
+              {/* Header */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-primary/20 to-primary/10 flex items-center justify-center shadow-lg">
+                    <FontAwesomeIcon
+                      icon={faChartLine}
+                      className="text-3xl text-primary"
+                    />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-extrabold text-gray-900">
+                      Analytics Dashboard
+                    </h2>
+                    <p className="text-gray-600 mt-1 font-medium">
+                      Track your queue performance and ticket statistics
+                    </p>
+                  </div>
+                </div>
+
+                {/* Time Filter */}
+                <div className="flex items-center gap-2 bg-gray-100 rounded-xl p-1.5">
+                  <FontAwesomeIcon
+                    icon={faCalendarAlt}
+                    className="text-gray-500 mr-2"
+                  />
+                  <button
+                    onClick={() => setTimeFilter("weekly")}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      timeFilter === "weekly"
+                        ? "bg-white text-primary shadow-md"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Weekly
+                  </button>
+                  <button
+                    onClick={() => setTimeFilter("monthly")}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      timeFilter === "monthly"
+                        ? "bg-white text-primary shadow-md"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    onClick={() => setTimeFilter("yearly")}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      timeFilter === "yearly"
+                        ? "bg-white text-primary shadow-md"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Yearly
+                  </button>
+                </div>
+              </div>
+
+              {/* Ticket Status Distribution */}
+              <div className="mb-10">
+                <h3 className="text-xl font-bold text-gray-900 mb-6">
+                  Ticket Status Distribution
+                </h3>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {/* Pie Chart */}
+                  <div className="bg-linear-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 border-2 border-blue-200">
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: "Waiting", value: ticketAnalytics.waiting },
+                            { name: "Done", value: ticketAnalytics.done },
+                            { name: "Skipped", value: ticketAnalytics.skipped },
+                            {
+                              name: "Cancelled",
+                              value: ticketAnalytics.cancelled,
+                            },
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, value }) =>
+                            `${name}: ${value} (${(((value || 0) / (ticketAnalytics.waiting + ticketAnalytics.serving + ticketAnalytics.done + ticketAnalytics.skipped + ticketAnalytics.cancelled || 1)) * 100).toFixed(0)}%)`
+                          }
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          <Cell fill="#22C55E" />
+                          <Cell fill="#3B82F6" />
+                          <Cell fill="#EF4444" />
+                          <Cell fill="#6B7280" />
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Stats Cards */}
+                  <div className="space-y-4">
+                    <div className="bg-linear-to-br from-yellow-50 to-orange-50 rounded-2xl p-6 border-2 border-yellow-300 shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-yellow-700 uppercase">
+                            Waiting
+                          </p>
+                          <p className="text-4xl font-extrabold text-yellow-900 mt-2">
+                            {ticketAnalytics.waiting}
+                          </p>
+                        </div>
+                        <div className="w-16 h-16 rounded-full bg-yellow-500 flex items-center justify-center">
+                          <FontAwesomeIcon
+                            icon={faHourglassHalf}
+                            className="text-3xl text-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-linear-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 border-2 border-blue-300 shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-blue-700 uppercase">
+                            Completed
+                          </p>
+                          <p className="text-4xl font-extrabold text-blue-900 mt-2">
+                            {ticketAnalytics.done}
+                          </p>
+                        </div>
+                        <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center">
+                          <FontAwesomeIcon
+                            icon={faCheck}
+                            className="text-3xl text-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-linear-to-br from-red-50 to-pink-50 rounded-2xl p-4 border-2 border-red-300 shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-semibold text-red-700 uppercase">
+                              Skipped
+                            </p>
+                            <p className="text-2xl font-extrabold text-red-900 mt-1">
+                              {ticketAnalytics.skipped}
+                            </p>
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center">
+                            <FontAwesomeIcon
+                              icon={faForward}
+                              className="text-xl text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-linear-to-br from-gray-50 to-slate-50 rounded-2xl p-4 border-2 border-gray-300 shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-700 uppercase">
+                              Cancelled
+                            </p>
+                            <p className="text-2xl font-extrabold text-gray-900 mt-1">
+                              {ticketAnalytics.cancelled}
+                            </p>
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center">
+                            <FontAwesomeIcon
+                              icon={faTimesCircle}
+                              className="text-xl text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Queue Growth Chart */}
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 mb-6">
+                  Queue Growth Trend
+                </h3>
+                <div className="bg-linear-to-br from-purple-50 to-indigo-50 rounded-2xl p-6 border-2 border-purple-200">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={queueGrowthData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis
+                        dataKey="name"
+                        stroke="#6B7280"
+                        style={{ fontSize: "12px" }}
+                      />
+                      <YAxis stroke="#6B7280" style={{ fontSize: "12px" }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "white",
+                          border: "2px solid #E5E7EB",
+                          borderRadius: "12px",
+                          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                        }}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="tickets"
+                        stroke="#8B5CF6"
+                        strokeWidth={3}
+                        dot={{ fill: "#8B5CF6", r: 6 }}
+                        activeDot={{ r: 8 }}
+                        name="Total Tickets"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -153,34 +153,34 @@ const CreateTicket = () => {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
               {/* Ticket Number Preview */}
-              <div className="bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-2xl p-6 border-2 border-primary/30 shadow-inner relative overflow-hidden">
+              <div className="bg-linear-to-br from-primary/10 via-orange-100/50 to-primary/10 rounded-2xl p-4 md:p-6 border-2 border-primary/30 shadow-inner relative overflow-hidden">
                 {/* Decorative background elements */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-linear-to-tr from-orange-100/20 to-transparent rounded-full -ml-12 -mb-12"></div>
+                <div className="absolute top-0 right-0 w-24 h-24 md:w-32 md:h-32 bg-linear-to-br from-primary/5 to-transparent rounded-full -mr-12 -mt-12 md:-mr-16 md:-mt-16"></div>
+                <div className="absolute bottom-0 left-0 w-16 h-16 md:w-24 md:h-24 bg-linear-to-tr from-orange-100/20 to-transparent rounded-full -ml-8 -mb-8 md:-ml-12 md:-mb-12"></div>
 
                 <div className="relative z-10">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="p-2 bg-linear-to-br from-primary/20 to-primary/10 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2 md:mb-3">
+                    <div className="p-1.5 md:p-2 bg-linear-to-br from-primary/20 to-primary/10 rounded-xl">
                       <FontAwesomeIcon
                         icon={faTicket}
-                        className="text-lg text-primary"
+                        className="text-base md:text-lg text-primary"
                       />
                     </div>
-                    <label className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                    <label className="text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide">
                       Your Ticket Number
                     </label>
                   </div>
 
-                  <div className="text-center py-4">
-                    <div className="inline-flex items-center justify-center px-8 py-4 bg-white/80 backdrop-blur-sm rounded-2xl border-2 border-primary/20 shadow-sm">
-                      <span className="text-4xl md:text-5xl font-black bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
+                  <div className="text-center py-2 md:py-4">
+                    <div className="inline-flex items-center justify-center px-4 md:px-8 py-2 md:py-4 bg-white/80 backdrop-blur-sm rounded-xl md:rounded-2xl border-2 border-primary/20 shadow-sm">
+                      <span className="text-2xl md:text-4xl lg:text-5xl font-black bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent break-all">
                         Will be assigned
                       </span>
                     </div>
-                    <p className="text-xs text-gray-600 mt-3 font-medium flex items-center justify-center gap-1">
-                      <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                    <p className="text-[10px] md:text-xs text-gray-600 mt-2 md:mt-3 font-medium flex items-center justify-center gap-1 px-2">
+                      <span className="w-1.5 md:w-2 h-1.5 md:h-2 bg-orange-500 rounded-full animate-pulse"></span>
                       Auto-generated upon submission
                     </p>
                   </div>
@@ -189,7 +189,7 @@ const CreateTicket = () => {
 
               {/* Client Name */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700 block">
+                <label className="text-xs md:text-sm font-semibold text-gray-700 block">
                   Client Name
                 </label>
                 <input
@@ -197,14 +197,14 @@ const CreateTicket = () => {
                   required
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                  className="w-full px-3 md:px-4 py-2.5 md:py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 placeholder:text-gray-400 text-sm md:text-base"
                   placeholder="Enter your full name"
                 />
               </div>
 
               {/* Email */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700 block">
+                <label className="text-xs md:text-sm font-semibold text-gray-700 block">
                   Email Address
                 </label>
                 <input
@@ -212,14 +212,14 @@ const CreateTicket = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                  className="w-full px-3 md:px-4 py-2.5 md:py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 placeholder:text-gray-400 text-sm md:text-base"
                   placeholder="your.email@example.com"
                 />
               </div>
 
               {/* Payment Type */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700 block">
+                <label className="text-xs md:text-sm font-semibold text-gray-700 block">
                   Payment Type
                 </label>
                 <select
@@ -227,14 +227,20 @@ const CreateTicket = () => {
                   onChange={(e) =>
                     setPayment(e.target.value as "cashier" | "assessment")
                   }
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 cursor-pointer"
+                  className="w-full px-3 md:px-4 py-2.5 md:py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20 focus:border-primary transition-all bg-white text-gray-900 cursor-pointer text-sm md:text-base"
                 >
                   <option value="cashier">
-                    <FontAwesomeIcon icon={faMoneyBill} className="mr-2" />{" "}
+                    <FontAwesomeIcon
+                      icon={faMoneyBill}
+                      className="mr-1 md:mr-2"
+                    />{" "}
                     Cashier
                   </option>
                   <option value="assessment">
-                    <FontAwesomeIcon icon={faClipboardList} className="mr-2" />{" "}
+                    <FontAwesomeIcon
+                      icon={faClipboardList}
+                      className="mr-1 md:mr-2"
+                    />{" "}
                     Assessment
                   </option>
                 </select>
@@ -244,7 +250,7 @@ const CreateTicket = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all focus:outline-none focus:ring-4 focus:ring-primary/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                className="w-full py-3.5 md:py-4 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-bold text-sm md:text-base shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all focus:outline-none focus:ring-4 focus:ring-primary/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">

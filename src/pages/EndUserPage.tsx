@@ -146,17 +146,27 @@ const EndUserPage: React.FC = () => {
       {/* Header */}
       <header className="bg-white/90 backdrop-blur-xl shadow-lg sticky top-0 z-50 border-b border-primary/20">
         <div className="container mx-auto px-4 py-5">
-          <div className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 rounded-xl from-primary flex items-center justify-center shadow-md">
-              <img
-                src="/PayFlow-Logo_transparent.png"
-                alt="PayFlow Logo"
-                className="w-full h-full object-cover"
-              />
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl from-primary flex items-center justify-center shadow-md">
+                <img
+                  src="/PayFlow-Logo_transparent.png"
+                  alt="PayFlow Logo"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <h1 className="text-3xl md:text-4xl font-extrabold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
+                PayFlow PSU
+              </h1>
             </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold bg-linear-to-r from-primary via-orange-600 to-black bg-clip-text text-transparent">
-              PayFlow PSU
-            </h1>
+
+            {/* Login Button - Top Right */}
+            <button
+              onClick={() => navigate("/admin")}
+              className="px-6 py-2.5 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 whitespace-nowrap"
+            >
+              Login
+            </button>
           </div>
         </div>
       </header>
