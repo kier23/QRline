@@ -21,6 +21,7 @@ const EndUserPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const codeReader = useRef<BrowserQRCodeReader | null>(null);
   const controlsRef = useRef<any>(null);
+  const hasScannedRef = useRef(false);
 
   // Check for active tickets on mount and when page gains focus
   useEffect(() => {
@@ -69,13 +70,20 @@ const EndUserPage: React.FC = () => {
     codeReader.current = new BrowserQRCodeReader();
 
     return () => {
-      controlsRef.current?.stop();
+      try {
+        controlsRef.current?.stop();
+      } catch (err) {
+        console.warn("Cleanup scanner stop error:", err);
+      } finally {
+        controlsRef.current = null;
+      }
     };
   }, []);
 
   const startScanning = async () => {
     if (!codeReader.current) return;
 
+    hasScannedRef.current = false;
     setScanning(true);
 
     setTimeout(async () => {
@@ -88,17 +96,29 @@ const EndUserPage: React.FC = () => {
           undefined,
           videoRef.current,
           (result) => {
-            if (result) {
-              const scannedQueueId = result.getText();
-              console.log("Scanned Queue ID:", scannedQueueId);
+            if (result && !hasScannedRef.current) {
+              hasScannedRef.current = true;
+
+              const raw = result.getText().trim();
+              console.log("Scanned QR raw:", raw);
+
+              let scannedQueueId = raw;
+
+              if (raw.includes("/queue/")) {
+                const parts = raw.split("/queue/");
+                scannedQueueId = parts[1]?.split("/")[0] || raw;
+              }
+
               stopScanning();
-              // Redirect immediately to the queue page
-              navigate(`/queue/${scannedQueueId}`);
+
+              setTimeout(() => {
+                navigate(`/queue/${scannedQueueId}`);
+              }, 200);
             }
           },
         );
       } catch (error) {
-        console.error(error);
+        console.error("Scanner error:", error);
         alert("Camera failed to start");
         setScanning(false);
       }
@@ -106,8 +126,14 @@ const EndUserPage: React.FC = () => {
   };
 
   const stopScanning = () => {
-    controlsRef.current?.stop();
-    setScanning(false);
+    try {
+      controlsRef.current?.stop();
+    } catch (err) {
+      console.warn("Scanner stop error:", err);
+    } finally {
+      controlsRef.current = null;
+      setScanning(false);
+    }
   };
 
   const handleSubmit = () => {
@@ -288,18 +314,33 @@ const EndUserPage: React.FC = () => {
                     <CheckCircle className="w-7 h-7 text-primary" />
                   </div>
                   <h2 className="text-3xl font-bold text-gray-800">
-                    Rules & Guidelines
+                    Guidelines
                   </h2>
                 </div>
 
                 <ul className="space-y-4">
                   {[
-                    "Follow the queue order displayed in the system.",
-                    "Keep your queue ID or QR code ready when called.",
-                    "Do not skip your turn or you may lose your position.",
-                    "Wait for your number to be called before approaching the counter.",
-                    "Be patient and respectful to staff and other queue members.",
-                  ].map((rule, index) => (
+                    {
+                      en: "Scan the QR code on the screen or enter the Queue ID to join.",
+                      tl: "I-scan ang QR code sa screen o ilagay ang Queue ID para makasali sa pila.",
+                    },
+                    {
+                      en: "Fill out the form with your information.",
+                      tl: "Sagutan ang form gamit ang iyong impormasyon.",
+                    },
+                    {
+                      en: "You will receive your queue number.",
+                      tl: "Makakatanggap ka ng iyong queue number.",
+                    },
+                    {
+                      en: "You may leave and return, but please be back before your number is called.",
+                      tl: "Maaari kang umalis at bumalik, ngunit siguraduhing naroon ka bago tawagin ang iyong numero.",
+                    },
+                    {
+                      en: "The queue advances every 5 seconds per number, and you can track the current number on the website.",
+                      tl: "Umaabante ang pila kada 5 segundo bawat numero, at maaari mong subaybayan ang kasalukuyang numero sa website.",
+                    },
+                  ].map((guide, index) => (
                     <li
                       key={index}
                       className="flex items-start gap-4 p-4 rounded-2xl bg-white/80 hover:bg-white transition-all shadow-sm hover:shadow-md"
@@ -307,9 +348,13 @@ const EndUserPage: React.FC = () => {
                       <span className="shrink-0 w-8 h-8 bg-linear-to-br from-primary to-orange-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md">
                         {index + 1}
                       </span>
-                      <span className="leading-relaxed text-gray-700 font-medium">
-                        {rule}
-                      </span>
+
+                      <div className="leading-relaxed">
+                        <p className="text-gray-800 font-medium">{guide.en}</p>
+                        <p className="text-sm text-gray-500 italic mt-1">
+                          {guide.tl}
+                        </p>
+                      </div>
                     </li>
                   ))}
                 </ul>
