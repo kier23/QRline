@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getGuestId } from "../lib/getGuestId";
@@ -201,7 +201,7 @@ const QueueStatus = () => {
     setupFCM();
   }, [guestId]); */
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     if (!queueId) return;
 
     setLoading(true);
@@ -255,7 +255,7 @@ const QueueStatus = () => {
     }
 
     setLoading(false);
-  };
+  }, [queueId, guestId]);
 
   const handleResubmitTicket = async () => {
     if (!userTicket || userTicket.status !== "skipped") return;
@@ -297,39 +297,7 @@ const QueueStatus = () => {
 
   useEffect(() => {
     fetchStatus();
-  }, [queueId]);
-
-  useEffect(() => {
-    if (!queueId) return;
-
-    const previousNext = prevNextNumberRef.current;
-    const previousStatus = prevUserStatusRef.current;
-    const previousTicketNumber = prevTicketNumberRef.current;
-
-    if (userTicket && nextNumber !== null) {
-      if (
-        userTicket.status === "waiting" &&
-        userTicket.ticket_number === nextNumber &&
-        (previousNext === null || previousNext !== nextNumber)
-      ) {
-        addNotification(
-          `Get ready! You're next (#${userTicket.ticket_number}).`,
-        );
-      }
-
-      if (
-        userTicket.status === "serving" &&
-        (previousStatus !== "serving" ||
-          previousTicketNumber !== userTicket.ticket_number)
-      ) {
-        addNotification(`It's your turn: ticket #${userTicket.ticket_number}.`);
-      }
-    }
-
-    prevNextNumberRef.current = nextNumber;
-    prevUserStatusRef.current = userTicket?.status || null;
-    prevTicketNumberRef.current = userTicket?.ticket_number || null;
-  }, [queueId, nextNumber, userTicket]);
+  }, [fetchStatus]);
 
   useEffect(() => {
     if (!queueId) return;
@@ -344,11 +312,14 @@ const QueueStatus = () => {
           table: "Queue",
           filter: `id=eq.${queueId}`,
         },
-        () => {
+        (payload) => {
+          console.log("Queue changed:", payload);
           fetchStatus();
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Queue channel status:", status);
+      });
 
     const ticketChannel = supabase
       .channel(`queue-status-tickets-${queueId}`)
@@ -360,17 +331,67 @@ const QueueStatus = () => {
           table: "Queue_Tickets",
           filter: `queue_id=eq.${queueId}`,
         },
-        () => {
+        (payload) => {
+          console.log("Ticket changed:", payload);
           fetchStatus();
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Ticket channel status:", status);
+      });
 
     return () => {
       supabase.removeChannel(queueChannel);
       supabase.removeChannel(ticketChannel);
     };
-  }, [queueId, guestId]);
+  }, [queueId, fetchStatus]);
+
+  useEffect(() => {
+    if (!queueId) return;
+
+    const queueChannel = supabase
+      .channel(`queue-status-${queueId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "Queue",
+          filter: `id=eq.${queueId}`,
+        },
+        (payload) => {
+          console.log("Queue changed:", payload);
+          fetchStatus();
+        },
+      )
+      .subscribe((status) => {
+        console.log("Queue channel status:", status);
+      });
+
+    const ticketChannel = supabase
+      .channel(`queue-status-tickets-${queueId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "Queue_Tickets",
+          filter: `queue_id=eq.${queueId}`,
+        },
+        (payload) => {
+          console.log("Ticket changed:", payload);
+          fetchStatus();
+        },
+      )
+      .subscribe((status) => {
+        console.log("Ticket channel status:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(queueChannel);
+      supabase.removeChannel(ticketChannel);
+    };
+  }, [queueId]);
 
   const userStatusText = () => {
     if (!userTicket) {
