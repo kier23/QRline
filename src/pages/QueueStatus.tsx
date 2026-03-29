@@ -14,6 +14,8 @@ import {
   faCheckCircle,
   faCheck,
   faTimesCircle,
+  faWifi,
+  faRotateRight,
 } from "@fortawesome/free-solid-svg-icons";
 import { getToken } from "firebase/messaging";
 import { messaging } from "../lib/firebase";
@@ -21,6 +23,7 @@ import { messaging } from "../lib/firebase";
 type Queue = {
   id: string;
   latest_number: number | null;
+  cutoff_number: number | null;
 };
 
 type QueueTicket = {
@@ -30,7 +33,15 @@ type QueueTicket = {
   guest_id: string;
 };
 
+// Possible realtime subscription states
+type SubStatus = "connecting" | "subscribed" | "error" | "closed";
+
 const VAPID_KEY = import.meta.env.VITE_VAPID_KEY;
+
+// How many ms to wait before attempting an auto-reconnect
+const RECONNECT_DELAY_MS = 3000;
+// Max auto-reconnect attempts before giving up and showing the manual button
+const MAX_AUTO_RECONNECTS = 3;
 
 const QueueStatus = () => {
   const { queueId } = useParams();
@@ -44,30 +55,30 @@ const QueueStatus = () => {
   const [userTicket, setUserTicket] = useState<QueueTicket | null>(null);
   const [lastUserTicket, setLastUserTicket] = useState<QueueTicket | null>(
     null,
-  ); // For showing done/skipped/cancelled
+  );
   const [notifications, setNotifications] = useState<string[]>([]);
 
-  const prevNextNumberRef = useRef<number | null>(null);
-  const prevUserStatusRef = useRef<string | null>(null);
-  const prevTicketNumberRef = useRef<number | null>(null);
+  // ── Subscription health state ──────────────────────────────────────────────
+  const [subStatus, setSubStatus] = useState<SubStatus>("connecting");
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Holds the cleanup function for the current channel pair so we can tear
+  // them down before re-subscribing
+  const channelCleanupRef = useRef<(() => void) | null>(null);
+  // ──────────────────────────────────────────────────────────────────────────
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [notificationPermissionGranted, setNotificationPermissionGranted] =
-    useState(false);
 
   useEffect(() => {
     const handler = (e: any) => {
-      e.preventDefault(); // stop auto popup
+      e.preventDefault();
       setDeferredPrompt(e);
       console.log("Install prompt ready ✅");
-
-      // Store in localStorage as backup
       localStorage.setItem("deferredPrompt", "available");
     };
 
     window.addEventListener("beforeinstallprompt", handler);
 
-    // Also check if PWA is already installed
     if (window.matchMedia("(display-mode: standalone)").matches) {
       console.log("Already running as PWA");
       localStorage.setItem("pwaInstalled", "true");
@@ -82,9 +93,9 @@ const QueueStatus = () => {
     };
   }, []);
 
-  // ✅ Bug 1 Fix: use registration.showNotification() instead of new Notification()
-  // new Notification() is blocked in PWA/mobile contexts controlled by a service worker.
-  const addNotification = (message: string) => {
+  // Stable notification helper — defined with useCallback so it can be safely
+  // referenced inside the subscription callback without going stale.
+  const addNotification = useCallback((message: string) => {
     setNotifications((prev) => [message, ...prev].slice(0, 6));
 
     if ("Notification" in window && Notification.permission === "granted") {
@@ -102,7 +113,7 @@ const QueueStatus = () => {
           console.warn("Notification failed:", e);
         });
     }
-  };
+  }, []);
 
   const handleEnableAll = async () => {
     if (!("Notification" in window)) {
@@ -111,13 +122,10 @@ const QueueStatus = () => {
     }
 
     try {
-      // 📲 Show install prompt FIRST (before notification permission)
       if (deferredPrompt) {
         try {
           deferredPrompt.prompt();
-
           const choice = await deferredPrompt.userChoice;
-
           if (choice.outcome === "accepted") {
             console.log("App installed ✅");
             alert(
@@ -126,23 +134,17 @@ const QueueStatus = () => {
           } else {
             console.log("Install dismissed ❌");
           }
-
           setDeferredPrompt(null);
-
-          // Small delay after install prompt
           await new Promise((resolve) => setTimeout(resolve, 800));
         } catch (promptError) {
           console.error("Install prompt error:", promptError);
-          // Continue to notification permission even if install fails
         }
       } else {
-        // Install prompt not ready yet - show message but continue
         console.log(
           "Install prompt not ready, continuing with notifications...",
         );
       }
 
-      // 🔔 Request notification permission AFTER install prompt
       const permission = await Notification.requestPermission();
 
       if (permission !== "granted") {
@@ -156,7 +158,6 @@ const QueueStatus = () => {
         return;
       }
 
-      // ✅ Bug 3 Fix: pass serviceWorkerRegistration to getToken() so it doesn't fail silently
       const swReg = await navigator.serviceWorker.getRegistration();
       const token = await getToken(messaging, {
         vapidKey: VAPID_KEY,
@@ -171,7 +172,6 @@ const QueueStatus = () => {
           .update({ fcm_token: token })
           .eq("guest_id", guestId);
 
-        setNotificationPermissionGranted(true);
         alert(
           "Notifications enabled successfully! ✅\nYou'll receive updates when your number is called.",
         );
@@ -198,7 +198,7 @@ const QueueStatus = () => {
     try {
       const { data: queueData, error: queueError } = await supabase
         .from("Queue")
-        .select("id, latest_number")
+        .select("id, latest_number, cutoff_number")
         .eq("id", queueId)
         .single();
 
@@ -229,7 +229,6 @@ const QueueStatus = () => {
           : (queueData.latest_number || 0) + 1,
       );
 
-      // Get user's active ticket (not done/skipped/cancelled)
       const activeUserTicket = (tickets || [])
         .filter(
           (t) =>
@@ -237,7 +236,6 @@ const QueueStatus = () => {
         )
         .pop();
 
-      // Get user's most recent ticket (including done/skipped/cancelled)
       const allUserTickets = (tickets || [])
         .filter((t) => t.guest_id === guestId)
         .sort((a, b) => b.ticket_number - a.ticket_number);
@@ -263,7 +261,6 @@ const QueueStatus = () => {
 
     if (!confirmResubmit) return;
 
-    // Navigate to create ticket page (no database change needed)
     navigate(`/queue/${queueId}`);
   };
 
@@ -283,8 +280,6 @@ const QueueStatus = () => {
         .eq("id", userTicket.id);
 
       alert("Ticket cancelled successfully");
-
-      // Redirect to CreateTicket page
       navigate(`/queue/${queueId}`);
     } catch (err: any) {
       console.error("Cancel ticket error:", err);
@@ -296,11 +291,18 @@ const QueueStatus = () => {
     fetchStatus();
   }, [fetchStatus]);
 
-  useEffect(() => {
-    if (!queueId) return;
+  // ── Core subscription setup ────────────────────────────────────────────────
+  // Returns a cleanup function that removes both channels.
+  const setupSubscriptions = useCallback(() => {
+    if (!queueId) return () => {};
+
+    setSubStatus("connecting");
+
+    // Unique suffix prevents Supabase from reusing a cached channel on reconnect
+    const suffix = Date.now();
 
     const queueChannel = supabase
-      .channel(`queue-status-${queueId}`)
+      .channel(`queue-status-${queueId}-${suffix}`)
       .on(
         "postgres_changes",
         {
@@ -316,10 +318,11 @@ const QueueStatus = () => {
       )
       .subscribe((status) => {
         console.log("Queue channel status:", status);
+        handleChannelStatus(status);
       });
 
     const ticketChannel = supabase
-      .channel(`queue-status-tickets-${queueId}`)
+      .channel(`queue-status-tickets-${queueId}-${suffix}`)
       .on(
         "postgres_changes",
         {
@@ -328,14 +331,12 @@ const QueueStatus = () => {
           table: "Queue_Tickets",
           filter: `queue_id=eq.${queueId}`,
         },
-        // ✅ Bug 4 Fix: call addNotification() when the user's ticket status changes
         (payload: any) => {
           console.log("Ticket changed:", payload);
           const newStatus = payload.new?.status;
           const oldStatus = payload.old?.status;
           const ticketGuestId = payload.new?.guest_id;
 
-          // Only notify for this user's own ticket
           if (ticketGuestId === guestId && newStatus !== oldStatus) {
             if (newStatus === "serving") {
               addNotification(
@@ -353,13 +354,103 @@ const QueueStatus = () => {
       )
       .subscribe((status) => {
         console.log("Ticket channel status:", status);
+        handleChannelStatus(status);
       });
 
     return () => {
       supabase.removeChannel(queueChannel);
       supabase.removeChannel(ticketChannel);
     };
-  }, [queueId, fetchStatus, guestId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueId, fetchStatus, guestId, addNotification]);
+
+  // Handles status events emitted by both channels
+  const handleChannelStatus = useCallback(
+    (status: string) => {
+      if (status === "SUBSCRIBED") {
+        setSubStatus("subscribed");
+        reconnectAttemptsRef.current = 0; // reset backoff counter on success
+        return;
+      }
+
+      if (
+        status === "TIMED_OUT" ||
+        status === "CLOSED" ||
+        status === "CHANNEL_ERROR"
+      ) {
+        console.warn(`Supabase channel ${status}. Attempting reconnect…`);
+        setSubStatus("closed");
+
+        // Clear any pending reconnect timer
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+        }
+
+        if (reconnectAttemptsRef.current < MAX_AUTO_RECONNECTS) {
+          reconnectAttemptsRef.current += 1;
+          const delay = RECONNECT_DELAY_MS * reconnectAttemptsRef.current;
+          console.log(
+            `Auto-reconnect attempt ${reconnectAttemptsRef.current} in ${delay}ms`,
+          );
+
+          reconnectTimerRef.current = setTimeout(() => {
+            // Tear down old channels first
+            if (channelCleanupRef.current) {
+              channelCleanupRef.current();
+            }
+            channelCleanupRef.current = setupSubscriptions();
+          }, delay);
+        } else {
+          // Give up auto-reconnecting — show the manual banner
+          console.warn("Max auto-reconnect attempts reached.");
+          setSubStatus("error");
+        }
+      }
+    },
+    [setupSubscriptions],
+  );
+
+  // Initial subscription mount + cleanup on unmount
+  useEffect(() => {
+    channelCleanupRef.current = setupSubscriptions();
+
+    return () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (channelCleanupRef.current) channelCleanupRef.current();
+    };
+  }, [setupSubscriptions]);
+
+  // Re-subscribe when the tab/window becomes visible again (e.g. after
+  // switching apps on mobile or un-minimizing the browser)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log("Tab visible again — refreshing data and re-subscribing");
+        fetchStatus();
+
+        // Only re-subscribe if we know the channel is no longer healthy
+        if (subStatus !== "subscribed") {
+          reconnectAttemptsRef.current = 0;
+          if (channelCleanupRef.current) channelCleanupRef.current();
+          channelCleanupRef.current = setupSubscriptions();
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [subStatus, fetchStatus, setupSubscriptions]);
+
+  // Manual reconnect triggered by the user pressing the banner button
+  const handleManualReconnect = () => {
+    reconnectAttemptsRef.current = 0;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    if (channelCleanupRef.current) channelCleanupRef.current();
+    channelCleanupRef.current = setupSubscriptions();
+    fetchStatus();
+  };
+  // ──────────────────────────────────────────────────────────────────────────
 
   const userStatusText = () => {
     if (!userTicket) {
@@ -415,6 +506,45 @@ const QueueStatus = () => {
             </div>
           </div>
 
+          {/* ── Subscription status banner ──────────────────────────────────── */}
+          {subStatus === "connecting" && (
+            <div className="mb-4 flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-xl text-sm font-medium">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 shrink-0" />
+              Connecting to live updates…
+            </div>
+          )}
+
+          {subStatus === "closed" && (
+            <div className="mb-4 flex items-center gap-3 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded-xl text-sm font-medium">
+              <FontAwesomeIcon icon={faWifi} className="shrink-0" />
+              <span>
+                Live updates disconnected — reconnecting automatically…
+              </span>
+              <div className="ml-auto animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 shrink-0" />
+            </div>
+          )}
+
+          {subStatus === "error" && (
+            <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-xl text-sm font-medium">
+              <FontAwesomeIcon
+                icon={faWifi}
+                className="shrink-0 mt-0.5 sm:mt-0"
+              />
+              <span className="flex-1">
+                Live updates are <strong>not active</strong>. You may miss
+                real-time changes until you reconnect.
+              </span>
+              <button
+                onClick={handleManualReconnect}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold shadow transition-all text-xs whitespace-nowrap"
+              >
+                <FontAwesomeIcon icon={faRotateRight} />
+                Reconnect
+              </button>
+            </div>
+          )}
+          {/* ─────────────────────────────────────────────────────────────── */}
+
           {loading && (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -431,8 +561,6 @@ const QueueStatus = () => {
               {/* Status Cards Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
                 <div className="text-center mb-6">
-                  {/* ✅ Bug 2 Fix: only disable the button when permission is already granted,
-                      not based on deferredPrompt / standalone mode which is almost always false on first visit */}
                   <button
                     onClick={handleEnableAll}
                     disabled={Notification.permission === "granted"}
@@ -473,7 +601,7 @@ const QueueStatus = () => {
                   </h3>
                 </div>
 
-                {/* Your Ticket Card - Merged with Status Banner */}
+                {/* Your Ticket Card */}
                 <div
                   className={`rounded-2xl border-2 shadow-xl transition-all transform hover:scale-105 relative overflow-hidden ${
                     lastUserTicket?.status === "waiting"
@@ -739,6 +867,38 @@ const QueueStatus = () => {
                       </li>
                     ))}
                   </ul>
+
+                  {/* Cutoff Information Display */}
+                  {queue?.cutoff_number !== null &&
+                    queue?.cutoff_number !== undefined &&
+                    queue.cutoff_number > 0 && (
+                      <div className="mt-4 pt-4 border-t border-purple-200">
+                        <div className="flex items-center gap-3 bg-purple-50 border border-purple-200 p-4 rounded-xl">
+                          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+                            <span className="text-xl">✂</span>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-bold text-purple-900">
+                              End-of-Day Cutoff Active
+                            </p>
+                            <p className="text-xs text-purple-700 mt-1">
+                              Serving for{" "}
+                              <span className="font-bold">
+                                {queue.cutoff_number} more ticket
+                                {queue.cutoff_number !== 1 ? "s" : ""}
+                              </span>{" "}
+                              today
+                            </p>
+                            {queue.latest_number && (
+                              <p className="text-xs text-purple-600 mt-1">
+                                Current: #{queue.latest_number} • Cutoff after:
+                                #{queue.latest_number + queue.cutoff_number}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                 </div>
               )}
 

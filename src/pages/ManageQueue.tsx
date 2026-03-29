@@ -551,14 +551,14 @@ const ManageQueue = () => {
   const handleCutoffIncrementSelect = async (increment: number) => {
     if (!queue) return;
 
-    const currentNumber = queue.latest_number || 0;
-    const newCutoffNumber = currentNumber + increment;
+    // Store the number of tickets remaining before cutoff (not the ticket number)
+    const ticketsRemainingBeforeCutoff = increment;
 
-    // Update queue with cutoff number
+    // Update queue with cutoff number (number of tickets left before cutoff)
     const { data: updatedQueue, error } = await supabase
       .from("Queue")
       .update({
-        cutoff_number: newCutoffNumber,
+        cutoff_number: ticketsRemainingBeforeCutoff,
       })
       .eq("id", queue.id)
       .select()
@@ -577,11 +577,15 @@ const ManageQueue = () => {
   const handleSetCustomCutoff = async (customNumber: number) => {
     if (!queue) return;
 
-    // Update queue with custom cutoff number
+    const currentNumber = queue.latest_number || 0;
+    // Calculate number of tickets remaining before cutoff
+    const ticketsRemainingBeforeCutoff = customNumber - currentNumber;
+
+    // Update queue with cutoff number (number of tickets left before cutoff)
     const { data: updatedQueue, error } = await supabase
       .from("Queue")
       .update({
-        cutoff_number: customNumber,
+        cutoff_number: ticketsRemainingBeforeCutoff,
       })
       .eq("id", queue.id)
       .select()
@@ -834,7 +838,8 @@ const ManageQueue = () => {
 
                 {/* Cutoff Status Display */}
                 {queue?.cutoff_number !== null &&
-                  queue?.cutoff_number !== undefined && (
+                  queue?.cutoff_number !== undefined &&
+                  queue.cutoff_number > 0 && (
                     <div className="mt-6 pt-6 border-t border-purple-200">
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex-1">
@@ -843,18 +848,18 @@ const ManageQueue = () => {
                             Active
                           </p>
                           <p className="text-sm text-gray-600">
-                            Serving until ticket{" "}
+                            Serving for{" "}
                             <span className="font-bold text-purple-800">
-                              #{queue.cutoff_number}
-                            </span>
+                              {queue.cutoff_number} more ticket
+                              {queue.cutoff_number !== 1 ? "s" : ""}
+                            </span>{" "}
+                            today
                           </p>
                           {queue.latest_number && (
                             <p className="text-xs text-gray-500 mt-1">
-                              {queue.cutoff_number - queue.latest_number} ticket
-                              {queue.cutoff_number - queue.latest_number !== 1
-                                ? "s"
-                                : ""}{" "}
-                              remaining • Remaining tickets continue tomorrow
+                              Current: #{queue.latest_number} • Will end at: #
+                              {queue.latest_number + queue.cutoff_number} •
+                              Remaining tickets continue tomorrow
                             </p>
                           )}
                         </div>
@@ -883,13 +888,13 @@ const ManageQueue = () => {
                       </span>
                     </p>
                     <p className="text-sm text-purple-700 bg-purple-50 p-3 rounded-xl mb-6 text-center">
-                      💡 Remaining tickets after cutoff will continue tomorrow
-                      or next working day
+                      💡 Enter the number of tickets to serve today. Remaining
+                      tickets will continue tomorrow or next working day.
                     </p>
 
                     <div className="space-y-3 mb-6">
                       <p className="text-sm font-semibold text-gray-700 mb-2">
-                        Quick Select:
+                        Quick Select (Number of Tickets to Serve):
                       </p>
                       {[1, 2, 3, 4].map((increment) => (
                         <button
@@ -898,10 +903,11 @@ const ManageQueue = () => {
                           className="w-full px-6 py-4 bg-linear-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-2xl text-lg font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-between"
                         >
                           <span>
-                            +{increment} Ticket{increment > 1 ? "s" : ""}
+                            Serve {increment} More Ticket
+                            {increment > 1 ? "s" : ""}
                           </span>
                           <span className="text-sm opacity-90">
-                            → #{(queue?.latest_number || 0) + increment}
+                            Until #{(queue?.latest_number || 0) + increment}
                           </span>
                         </button>
                       ))}
@@ -909,14 +915,14 @@ const ManageQueue = () => {
 
                     <div className="mb-6">
                       <p className="text-sm font-semibold text-gray-700 mb-2">
-                        Or Enter Custom Ticket Number:
+                        Or Enter Custom Ending Ticket Number:
                       </p>
                       <div className="flex gap-2">
                         <input
                           type="number"
                           value={customCutoffValue}
                           onChange={(e) => setCustomCutoffValue(e.target.value)}
-                          placeholder={`Enter cutoff number (min: ${(queue?.latest_number || 0) + 1})`}
+                          placeholder={`Enter ending ticket # (min: ${(queue?.latest_number || 0) + 1})`}
                           min={(queue?.latest_number || 0) + 1}
                           className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition font-semibold"
                         />
@@ -937,7 +943,7 @@ const ManageQueue = () => {
                           }
                           className="px-6 py-3 bg-linear-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Set
+                          Set Cutoff
                         </button>
                       </div>
                     </div>
