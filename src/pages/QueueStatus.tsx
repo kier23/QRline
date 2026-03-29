@@ -82,19 +82,25 @@ const QueueStatus = () => {
     };
   }, []);
 
+  // ✅ Bug 1 Fix: use registration.showNotification() instead of new Notification()
+  // new Notification() is blocked in PWA/mobile contexts controlled by a service worker.
   const addNotification = (message: string) => {
     setNotifications((prev) => [message, ...prev].slice(0, 6));
 
-    if (
-      "Notification" in window &&
-      Notification.permission === "granted" &&
-      typeof Notification === "function"
-    ) {
-      try {
-        new Notification(message);
-      } catch (e) {
-        console.warn("Notification failed:", e);
-      }
+    if ("Notification" in window && Notification.permission === "granted") {
+      navigator.serviceWorker
+        .getRegistration()
+        .then((registration) => {
+          if (registration) {
+            registration.showNotification(message, {
+              icon: "/PayFlow-Logo_192.png",
+              badge: "/PayFlow-Logo_192.png",
+            });
+          }
+        })
+        .catch((e) => {
+          console.warn("Notification failed:", e);
+        });
     }
   };
 
@@ -150,9 +156,11 @@ const QueueStatus = () => {
         return;
       }
 
-      // Get FCM token for push notifications
+      // ✅ Bug 3 Fix: pass serviceWorkerRegistration to getToken() so it doesn't fail silently
+      const swReg = await navigator.serviceWorker.getRegistration();
       const token = await getToken(messaging, {
         vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: swReg,
       });
 
       console.log("FCM Token:", token);
@@ -163,6 +171,7 @@ const QueueStatus = () => {
           .update({ fcm_token: token })
           .eq("guest_id", guestId);
 
+        setNotificationPermissionGranted(true);
         alert(
           "Notifications enabled successfully! ✅\nYou'll receive updates when your number is called.",
         );
@@ -319,8 +328,26 @@ const QueueStatus = () => {
           table: "Queue_Tickets",
           filter: `queue_id=eq.${queueId}`,
         },
-        (payload) => {
+        // ✅ Bug 4 Fix: call addNotification() when the user's ticket status changes
+        (payload: any) => {
           console.log("Ticket changed:", payload);
+          const newStatus = payload.new?.status;
+          const oldStatus = payload.old?.status;
+          const ticketGuestId = payload.new?.guest_id;
+
+          // Only notify for this user's own ticket
+          if (ticketGuestId === guestId && newStatus !== oldStatus) {
+            if (newStatus === "serving") {
+              addNotification(
+                "🔔 It's your turn! Please proceed to the counter.",
+              );
+            } else if (newStatus === "skipped") {
+              addNotification("⚠️ Your ticket was skipped. Please resubmit.");
+            } else if (newStatus === "done") {
+              addNotification("✅ Your transaction is complete. Thank you!");
+            }
+          }
+
           fetchStatus();
         },
       )
@@ -332,7 +359,7 @@ const QueueStatus = () => {
       supabase.removeChannel(queueChannel);
       supabase.removeChannel(ticketChannel);
     };
-  }, [queueId, fetchStatus]);
+  }, [queueId, fetchStatus, guestId]);
 
   const userStatusText = () => {
     if (!userTicket) {
@@ -404,18 +431,18 @@ const QueueStatus = () => {
               {/* Status Cards Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
                 <div className="text-center mb-6">
+                  {/* ✅ Bug 2 Fix: only disable the button when permission is already granted,
+                      not based on deferredPrompt / standalone mode which is almost always false on first visit */}
                   <button
                     onClick={handleEnableAll}
-                    disabled={
-                      !deferredPrompt &&
-                      window.matchMedia?.("(display-mode: standalone)")
-                        .matches === false
-                    }
-                    className="px-6 py-4 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    disabled={Notification.permission === "granted"}
+                    className="px-6 py4 bg-linear-to-r from-primary via-orange-600 to-primary text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
-                    🔔 Enable Notifications & Install App
+                    {Notification.permission === "granted"
+                      ? "🔔 Notifications Enabled"
+                      : "🔔 Enable Notifications & Install App"}
                   </button>
-                  {!deferredPrompt && (
+                  {!deferredPrompt && Notification.permission !== "granted" && (
                     <p className="text-xs text-gray-500 mt-2">
                       Install prompt will appear after visiting the site a few
                       times

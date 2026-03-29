@@ -14,13 +14,16 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// 🔔 Handle background messages (DATA-ONLY)
+// 🔔 Handle background messages
+// ✅ Bug 5 Fix: check payload.notification first, then fall back to payload.data.
+// Previously only payload.data was read, so notification-type FCM messages
+// (sent without data-only flag) would show a blank/default notification.
 messaging.onBackgroundMessage((payload) => {
   console.log("Background message received:", payload);
 
-  const title = payload.data?.title || "Queue Update";
-  const body = payload.data?.body || "You have a new update.";
-  const url = payload.data?.url || "/";
+  const title = payload.notification?.title || payload.data?.title || "Queue Update";
+  const body = payload.notification?.body || payload.data?.body || "You have a new update.";
+  const url = payload.notification?.click_action || payload.data?.url || "/";
 
   self.registration.showNotification(title, {
     body,
@@ -39,7 +42,6 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const url = event.notification.data?.url || "/";
-
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
       for (const client of clientsArr) {
